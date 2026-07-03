@@ -3,11 +3,12 @@ import {
   groupTiles, isOwnable,
 } from '../board';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
-import { createEmptyPortfolio, createMarket, recordMarketEvent } from '../market';
+import { createEmptyPortfolio, createMarket, industriesForEtf, recordMarketEvent } from '../market';
+import { quoteEtfBuyCostCents, quoteEtfSale } from '../portfolio';
 import { settleMarketRound } from '../pricingEngine';
 import type {
   Action, ApplyResult, AuctionState, Card, GameEvent, GameSettings, GameState,
-  IndustryTag, PlayerState, RNG, TradeSide,
+  EtfId, IndustryTag, PlayerState, RNG, TradeSide,
 } from '../types';
 import {
   alivePlayers, canBuild, canMortgage, canSellHouse, canUnmortgage, computeRent,
@@ -295,6 +296,48 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
         industries: ['finance'],
       });
       log(s, `${player.name} 赎回了 ${tile.name} (-$${unmortgageCost(tile)})`);
+      return null;
+    }
+    case 'buy-etf': {
+      if (!(isCurrent && s.phase === 'manage')) return '只能在自己的整理阶段买入 ETF';
+      const reason = validateEtfOrder(s, action.etfId, action.shares);
+      if (reason) return reason;
+      const portfolio = ensurePortfolio(s, player.id);
+      const costCash = Math.ceil(quoteEtfBuyCostCents(s, action.etfId, action.shares) / 100);
+      if (player.cash < costCash) return '现金不足，无法买入 ETF';
+      player.cash -= costCash;
+      portfolio[action.etfId] += action.shares;
+      recordMarketEvent(s, {
+        kind: 'etf-bought',
+        polarity: 'bullish',
+        playerId: player.id,
+        amount: costCash,
+        magnitude: Math.min(2, Math.max(0.25, action.shares * 0.25)),
+        industries: marketIndustries(industriesForEtf(action.etfId)),
+      });
+      log(s, `${player.name} 买入 ${action.shares} 股 ${action.etfId} ETF (-$${costCash})`);
+      return null;
+    }
+    case 'sell-etf': {
+      if (!((isCurrent && s.phase === 'manage') || isDebtor)) return '现在不能卖出 ETF';
+      const reason = validateEtfOrder(s, action.etfId, action.shares);
+      if (reason) return reason;
+      const portfolio = ensurePortfolio(s, player.id);
+      if (portfolio[action.etfId] < action.shares) return 'ETF 持仓不足';
+      const forced = s.phase === 'awaiting-debt';
+      const quote = quoteEtfSale(s, action.etfId, action.shares, forced);
+      portfolio[action.etfId] -= action.shares;
+      player.cash += quote.netCash;
+      recordMarketEvent(s, {
+        kind: forced ? 'etf-forced-sold' : 'etf-sold',
+        polarity: 'bearish',
+        playerId: player.id,
+        amount: quote.netCash,
+        magnitude: Math.min(forced ? 4 : 2, Math.max(0.25, action.shares * (forced ? 0.35 : 0.2))),
+        industries: marketIndustries(industriesForEtf(action.etfId)),
+      });
+      log(s, `${player.name} ${forced ? '火售' : '卖出'} ${action.shares} 股 ${action.etfId} ETF (+$${quote.netCash})`);
+      if (forced) settleFlow(s, ctx);
       return null;
     }
     case 'propose-trade': {
@@ -690,6 +733,16 @@ function executeBankruptcy(s: GameState, ctx: Ctx, debtorId: string): void {
   if (creditor && !creditor.bankrupt) creditor.cash += debtor.cash;
   debtor.cash = 0;
 
+  // ETF 持仓随破产资产一起转移；欠银行破产时直接清空。
+  const debtorPortfolio = ensurePortfolio(s, debtorId);
+  if (creditor && !creditor.bankrupt) {
+    const creditorPortfolio = ensurePortfolio(s, creditor.id);
+    for (const [etfId, shares] of Object.entries(debtorPortfolio) as [EtfId, number][]) {
+      creditorPortfolio[etfId] += shares;
+    }
+  }
+  s.portfolios[debtorId] = createEmptyPortfolio();
+
   // 地产
   const toAuction: number[] = [];
   for (const id of props) {
@@ -820,6 +873,17 @@ function finishAuction(s: GameState, ctx: Ctx, sold: boolean): void {
 }
 
 // ---------------------------------------------------------------- 交易
+
+function validateEtfOrder(s: GameState, etfId: EtfId, shares: number): string | null {
+  if (!s.market.etfs[etfId]) return '未知 ETF';
+  if (!Number.isInteger(shares) || shares <= 0) return 'ETF 股数必须是正整数';
+  return null;
+}
+
+function ensurePortfolio(s: GameState, playerId: string): GameState['portfolios'][string] {
+  s.portfolios[playerId] ??= createEmptyPortfolio();
+  return s.portfolios[playerId]!;
+}
 
 function validateTradeSide(s: GameState, ownerId: string, side: TradeSide): string | null {
   const owner = getPlayer(s, ownerId);

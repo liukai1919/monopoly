@@ -1,4 +1,5 @@
 import { BOARD, groupTiles, isOwnable } from '../board';
+import { bestEtfToLiquidate, quoteEtfSale } from '../portfolio';
 import type { Action, GameState, OwnableTile, TradeSide } from '../types';
 import {
   canBuild, canMortgage, canSellHouse, canUnmortgage, getPlayer, liquidationValue,
@@ -134,6 +135,15 @@ function decideLiquidation(s: GameState, playerId: string): Action {
   }
 
   // 1. 抵押非垄断组地块 (便宜的先)
+  const etfId = bestEtfToLiquidate(s, playerId);
+  if (etfId) {
+    const shortfall = Math.max(1, debt.amount - getPlayer(s, playerId).cash);
+    const held = s.portfolios[playerId]?.[etfId] ?? 0;
+    let shares = 1;
+    while (shares < held && quoteEtfSale(s, etfId, shares, true).netCash < shortfall) shares += 1;
+    if (quoteEtfSale(s, etfId, shares, true).netCash > 0) return { type: 'sell-etf', etfId, shares };
+  }
+
   const mine = playerProperties(s, playerId);
   const mortgageable = mine
     .filter((id) => canMortgage(s, playerId, id) === null)

@@ -134,7 +134,10 @@ export type MarketEventKind =
   | 'mortgage'
   | 'unmortgage'
   | 'tax-paid'
-  | 'bankruptcy';
+  | 'bankruptcy'
+  | 'etf-bought'
+  | 'etf-sold'
+  | 'etf-forced-sold';
 
 export type IndustryScoreMap = Record<IndustryTag, number>;
 export type Portfolio = Record<EtfId, number>;
@@ -223,6 +226,8 @@ export type Action =
   | { type: 'sell-house'; tileId: number }
   | { type: 'mortgage'; tileId: number }
   | { type: 'unmortgage'; tileId: number }
+  | { type: 'buy-etf'; etfId: EtfId; shares: number }
+  | { type: 'sell-etf'; etfId: EtfId; shares: number }
   | { type: 'propose-trade'; to: string; give: TradeSide; get: TradeSide }
   | { type: 'respond-trade'; accept: boolean }
   | { type: 'cancel-trade' }

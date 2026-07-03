@@ -1,4 +1,5 @@
 import { BOARD, MORTGAGE_INTEREST, groupTiles, isOwnable } from '../board';
+import { portfolioLiquidationValue, portfolioMarketValue } from '../portfolio';
 import type {
   ColorGroup, GameState, OwnableTile, PlayerState, PropertyTile, Tile,
 } from '../types';
@@ -79,7 +80,7 @@ export function unmortgageCost(tile: OwnableTile): number {
 
 /** 玩家还能变现多少钱: 现金 + 卖房(半价) + 抵押未抵押地块(半价) */
 export function liquidationValue(s: GameState, playerId: string): number {
-  let total = getPlayer(s, playerId).cash;
+  let total = getPlayer(s, playerId).cash + portfolioLiquidationValue(s, playerId);
   for (const id of playerProperties(s, playerId)) {
     const tile = getTile(id);
     if (!isOwnable(tile)) continue;
@@ -95,7 +96,7 @@ export function liquidationValue(s: GameState, playerId: string): number {
 
 /** 净资产 (排名用): 现金 + 地价(抵押减半) + 建筑成本 */
 export function netWorth(s: GameState, playerId: string): number {
-  let total = getPlayer(s, playerId).cash;
+  let total = getPlayer(s, playerId).cash + portfolioMarketValue(s, playerId);
   for (const id of playerProperties(s, playerId)) {
     const tile = getTile(id);
     if (!isOwnable(tile)) continue;

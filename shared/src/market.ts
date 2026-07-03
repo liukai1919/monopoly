@@ -87,6 +87,10 @@ export function createMarket(): MarketState {
   };
 }
 
+export function industriesForEtf(etfId: EtfId): IndustryTag[] {
+  return ETF_DEFINITIONS[etfId]?.industries ?? [];
+}
+
 export function recordMarketEvent(s: GameState, input: MarketEventInput): void {
   const industries = unique(input.industries ?? industriesForTile(input.tileId));
   if (industries.length === 0) return;
@@ -212,6 +216,21 @@ function marketCopy(
       return {
         headline: `破产事件冲击信贷市场, 金融 ETF 承压`,
         driverText: `${c.player} 宣告破产, 坏账担忧升温`,
+      };
+    case 'etf-bought':
+      return {
+        headline: `${c.industry}ETF 获得买盘流入`,
+        driverText: `${c.player} 买入${c.industry}ETF${amount}`,
+      };
+    case 'etf-sold':
+      return {
+        headline: `${c.industry}ETF 出现获利了结`,
+        driverText: `${c.player} 卖出${c.industry}ETF${amount}`,
+      };
+    case 'etf-forced-sold':
+      return {
+        headline: `${c.industry}ETF 遭遇强制抛售压力`,
+        driverText: `${c.player} 为偿债火售${c.industry}ETF${amount}`,
       };
     default:
       return {

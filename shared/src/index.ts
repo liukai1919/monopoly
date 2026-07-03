@@ -2,6 +2,7 @@ export * from './types';
 export * from './board';
 export * from './cards';
 export * from './market';
+export * from './portfolio';
 export * from './pricingEngine';
 export * from './engine/helpers';
 export { AUCTION_TURN_MS, applyAction, createGame } from './engine/game';
