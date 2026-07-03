@@ -1,9 +1,13 @@
 import type { GameState } from '@monopoly/shared';
+import {
+  DEFAULT_PLAYER_TOKEN_ID, PLAYER_TOKENS, getPlayerToken, getPlayerTokenByEmoji,
+} from '@monopoly/shared';
 
 export interface LobbyPlayer {
-  id: string;          // 手机端 localStorage 里的 UUID, 断线重连的身份凭证
+  id: string;
   name: string;
   emoji: string;
+  tokenId?: string;
   color: string;
   isAi: boolean;
   connected: boolean;
@@ -19,9 +23,10 @@ export interface Room {
 }
 
 export const PLAYER_COLORS = ['#E63946', '#2667C9', '#2A9D8F', '#E88C1F', '#9B5DE5', '#D81B7F'];
-export const PLAYER_EMOJIS = ['🚗', '🐶', '🎩', '⛵', '🐱', '🥾', '🎸', '🍁'];
-export const AI_NAMES = ['AI·枫叶', 'AI·海狸', 'AI·驼鹿', 'AI·北极熊'];
-export const AI_EMOJIS = ['🤖', '👾', '🦾', '🛸'];
+export const PLAYER_EMOJIS = PLAYER_TOKENS.map((token) => token.emoji);
+export const AI_NAMES = ['AI-Maple', 'AI-Loon', 'AI-Moose', 'AI-Aurora'];
+export const AI_TOKEN_IDS = ['maple-leaf', 'hockey-loon', 'mountie-moose', 'polar-bear'];
+export const AI_EMOJIS = AI_TOKEN_IDS.map((id) => getPlayerToken(id)?.emoji ?? '🤖');
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const ROOM_TTL = 12 * 60 * 60 * 1000;
@@ -58,6 +63,17 @@ export function pickEmoji(room: Room, preferred?: string): string {
   const used = new Set(room.lobby.map((p) => p.emoji));
   if (preferred && !used.has(preferred)) return preferred;
   return PLAYER_EMOJIS.find((e) => !used.has(e)) ?? '🎲';
+}
+
+export function pickToken(room: Room, preferredTokenId?: string, preferredEmoji?: string) {
+  const usedTokenIds = new Set(room.lobby.map((p) => p.tokenId).filter(Boolean));
+  const usedEmojis = new Set(room.lobby.map((p) => p.emoji));
+  const preferred = getPlayerToken(preferredTokenId)
+    ?? getPlayerTokenByEmoji(preferredEmoji)
+    ?? getPlayerToken(DEFAULT_PLAYER_TOKEN_ID);
+  if (preferred && !usedTokenIds.has(preferred.id) && !usedEmojis.has(preferred.emoji)) return preferred;
+  return PLAYER_TOKENS.find((token) => !usedTokenIds.has(token.id) && !usedEmojis.has(token.emoji))
+    ?? getPlayerToken(DEFAULT_PLAYER_TOKEN_ID)!;
 }
 
 export function sweepRooms(): void {

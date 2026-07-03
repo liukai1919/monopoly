@@ -67,6 +67,7 @@ export interface PlayerState {
   id: string;
   name: string;
   emoji: string;
+  tokenId?: string;
   color: string;
   isAi: boolean;
   connected: boolean;

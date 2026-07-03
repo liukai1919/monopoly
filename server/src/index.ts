@@ -9,7 +9,7 @@ import { createGame } from '@monopoly/shared';
 import type { DiceStyle } from '@monopoly/shared';
 import { applyPlayerAction, broadcast } from './gameHost';
 import {
-  AI_EMOJIS, AI_NAMES, PLAYER_COLORS, createRoom, getRoom, pickEmoji, sweepRooms, touch,
+  AI_EMOJIS, AI_NAMES, AI_TOKEN_IDS, PLAYER_COLORS, createRoom, getRoom, pickToken, sweepRooms, touch,
 } from './rooms';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -72,7 +72,7 @@ io.on('connection', (socket) => {
 
   // ---- 手机: 加入 / 断线重连 ----
   socket.on('player:join', (
-    payload: { code?: string; playerId?: string; name?: string; emoji?: string },
+    payload: { code?: string; playerId?: string; name?: string; emoji?: string; tokenId?: string },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
     const room = getRoom(payload?.code);
@@ -84,13 +84,25 @@ io.on('connection', (socket) => {
     if (seat) {
       seat.connected = true;
       if (payload.name) seat.name = payload.name.trim().slice(0, 12) || seat.name;
+      if (!room.game && (payload.tokenId || payload.emoji)) {
+        const seatId = seat.id;
+        const token = pickToken(
+          { ...room, lobby: room.lobby.filter((p) => p.id !== seatId) },
+          payload.tokenId,
+          payload.emoji,
+        );
+        seat.tokenId = token.id;
+        seat.emoji = token.emoji;
+      }
     } else {
       if (room.game) return cb?.({ error: '游戏已经开始, 这局不能中途加入了' });
       if (room.lobby.length >= 6) return cb?.({ error: '房间满了 (最多 6 人)' });
+      const token = pickToken(room, payload.tokenId, payload.emoji);
       seat = {
         id: playerId,
         name: payload.name?.trim().slice(0, 12) || `玩家${room.lobby.length + 1}`,
-        emoji: pickEmoji(room, payload.emoji),
+        emoji: token.emoji,
+        tokenId: token.id,
         color: PLAYER_COLORS[room.lobby.length % PLAYER_COLORS.length]!,
         isAi: false,
         connected: true,
@@ -116,10 +128,12 @@ io.on('connection', (socket) => {
     if (!room || room.game || room.lobby.length >= 6) return;
     const aiCount = room.lobby.filter((p) => p.isAi).length;
     if (aiCount >= AI_NAMES.length) return;
+    const token = pickToken(room, AI_TOKEN_IDS[aiCount], AI_EMOJIS[aiCount]);
     room.lobby.push({
       id: `ai-${aiCount + 1}-${room.code}`,
       name: AI_NAMES[aiCount]!,
-      emoji: AI_EMOJIS[aiCount]!,
+      emoji: token.emoji,
+      tokenId: token.id,
       color: PLAYER_COLORS[room.lobby.length % PLAYER_COLORS.length]!,
       isAi: true,
       connected: true,
@@ -166,7 +180,14 @@ io.on('connection', (socket) => {
     if (room.lobby.length < 2) return cb?.({ error: '至少需要 2 名玩家, 可以添加 AI 凑数' });
     try {
       room.game = createGame(
-        room.lobby.map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, color: p.color, isAi: p.isAi })),
+        room.lobby.map((p) => ({
+          id: p.id,
+          name: p.name,
+          emoji: p.emoji,
+          tokenId: p.tokenId,
+          color: p.color,
+          isAi: p.isAi,
+        })),
         {
           freeParkingPot: !!payload?.freeParkingPot,
           maxTurns: payload?.maxTurns && payload.maxTurns > 0 ? payload.maxTurns : null,

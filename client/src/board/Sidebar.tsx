@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { BOARD, GROUP_COLORS, isOwnable } from '@monopoly/shared';
+import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
 import type { GameState } from '@monopoly/shared';
 
 export default function Sidebar({ game, code, joinUrl }: {
@@ -29,6 +29,7 @@ export default function Sidebar({ game, code, joinUrl }: {
 
 function PlayerCard({ game, playerId }: { game: GameState; playerId: string }) {
   const p = game.players.find((x) => x.id === playerId)!;
+  const token = getPlayerToken(p.tokenId);
   const isCurrent = game.currentPlayer === p.id && game.phase !== 'game-over';
   const props = Object.entries(game.ownership)
     .filter(([, o]) => o.owner === p.id)
@@ -43,6 +44,7 @@ function PlayerCard({ game, playerId }: { game: GameState; playerId: string }) {
       <div className="player-card-top">
         <span className="player-card-emoji">{p.emoji}</span>
         <span className="player-card-name" style={{ color: p.color }}>{p.name}</span>
+        {token && <span className="tag">{token.name}</span>}
         {p.isAi && <span className="tag">AI</span>}
         {p.inJail && <span className="tag tag-warn">🚔 蹲监狱</span>}
         {!p.isAi && !p.connected && !p.bankrupt && <span className="tag tag-warn">📴 掉线</span>}

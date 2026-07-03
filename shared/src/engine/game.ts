@@ -24,7 +24,7 @@ interface Ctx { events: GameEvent[]; rng: RNG; }
 // ---------------------------------------------------------------- 建局
 
 export interface SeatInfo {
-  id: string; name: string; emoji: string; color: string; isAi: boolean;
+  id: string; name: string; emoji: string; tokenId?: string; color: string; isAi: boolean;
 }
 
 export function createGame(

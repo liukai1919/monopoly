@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { getPlayerToken } from '@monopoly/shared';
 import type { DiceStyle, GameEvent } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import BoardGrid from '../board/BoardGrid';
@@ -254,6 +255,7 @@ function Lobby({ code, joinUrl, room }: {
               <li key={p.id} className="lobby-player" style={{ borderColor: p.color }}>
                 <span className="lobby-player-emoji">{p.emoji}</span>
                 <span className="lobby-player-name">{p.name}</span>
+                {getPlayerToken(p.tokenId) && <span className="lobby-token-name">{getPlayerToken(p.tokenId)?.name}</span>}
                 {p.isAi && <span className="tag">AI</span>}
                 {!p.isAi && !p.connected && <span className="tag tag-warn">离线</span>}
               </li>

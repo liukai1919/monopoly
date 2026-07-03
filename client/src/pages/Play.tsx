@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getTile } from '@monopoly/shared';
-import type { Action } from '@monopoly/shared';
+import { PLAYER_TOKENS, getPlayerToken, getTile } from '@monopoly/shared';
+import type { Action, PlayerToken } from '@monopoly/shared';
 import { emitAck, myPlayerId, sendAction, socket, useRoom } from '../api';
 import ActionPanel from '../play/ActionPanel';
 import AssetsPanel from '../play/AssetsPanel';
@@ -13,6 +13,7 @@ export default function Play() {
   const { room } = useRoom();
   const pid = myPlayerId();
   const [name, setName] = useState(localStorage.getItem('monopoly-name') ?? '');
+  const [tokenId, setTokenId] = useState(localStorage.getItem('monopoly-token') ?? 'maple-beaver');
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState('');
   const [tab, setTab] = useState<'action' | 'assets' | 'trade' | 'guide'>('action');
@@ -24,41 +25,43 @@ export default function Play() {
     setTimeout(() => setToast(''), 2500);
   }, []);
 
-  const join = useCallback(async (joinName: string) => {
-    const res = await emitAck('player:join', { code, playerId: pid, name: joinName });
+  const join = useCallback(async (joinName: string, joinTokenId = tokenId) => {
+    const res = await emitAck('player:join', { code, playerId: pid, name: joinName, tokenId: joinTokenId });
     if (res?.error) {
       setJoinError(res.error);
       return false;
     }
     localStorage.setItem('monopoly-name', joinName);
+    localStorage.setItem('monopoly-token', joinTokenId);
     localStorage.setItem('monopoly-room', code);
     setJoined(true);
     joinedRef.current = true;
     setJoinError('');
     return true;
-  }, [code, pid]);
+  }, [code, pid, tokenId]);
 
-  // 之前进过这个房间 → 静默重连; socket 重连后也自动补一次 join
   useEffect(() => {
     const savedName = localStorage.getItem('monopoly-name') ?? '';
+    const savedToken = localStorage.getItem('monopoly-token') ?? tokenId;
     if (localStorage.getItem('monopoly-room') === code && savedName) {
-      void join(savedName);
+      void join(savedName, savedToken);
     }
     const onConnect = () => {
-      if (joinedRef.current) void join(localStorage.getItem('monopoly-name') ?? '');
+      if (joinedRef.current) {
+        void join(localStorage.getItem('monopoly-name') ?? '', localStorage.getItem('monopoly-token') ?? savedToken);
+      }
     };
     socket.on('connect', onConnect);
     return () => {
       socket.off('connect', onConnect);
     };
-  }, [code, join]);
+  }, [code, join, tokenId]);
 
   const act = useCallback(async (action: Action) => {
     const err = await sendAction(code, action);
     if (err) showToast(err);
   }, [code, showToast]);
 
-  // ---------- 未加入: 起名页 ----------
   if (!joined) {
     return (
       <div className="play-join">
@@ -70,12 +73,13 @@ export default function Play() {
           maxLength={12}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && name.trim() && join(name.trim())}
+          onKeyDown={(e) => e.key === 'Enter' && name.trim() && join(name.trim(), tokenId)}
         />
+        <TokenPicker selectedId={tokenId} onSelect={setTokenId} />
         <button
           className="btn btn-primary btn-xl"
           disabled={!name.trim()}
-          onClick={() => join(name.trim())}
+          onClick={() => join(name.trim(), tokenId)}
         >
           进入房间
         </button>
@@ -84,27 +88,30 @@ export default function Play() {
     );
   }
 
-  if (!room) return <div className="board-loading">连接中…</div>;
+  if (!room) return <div className="board-loading">连接中...</div>;
 
   const game = room.game;
   const me = game?.players.find((p) => p.id === pid) ?? null;
 
-  // ---------- 大厅等待 ----------
   if (!game) {
     return (
       <div className="play-join">
-        <h1>✅ 已加入</h1>
+        <h1>✓ 已加入</h1>
         <p className="play-join-code">房间 {code}</p>
         <div className="play-wait-list">
-          {room.lobby.map((p) => (
-            <div key={p.id} className="lobby-player" style={{ borderColor: p.color }}>
-              <span>{p.emoji}</span>
-              <span>{p.name}{p.id === pid ? ' (我)' : ''}</span>
-              {p.isAi && <span className="tag">AI</span>}
-            </div>
-          ))}
+          {room.lobby.map((p) => {
+            const token = getPlayerToken(p.tokenId);
+            return (
+              <div key={p.id} className="lobby-player" style={{ borderColor: p.color }}>
+                <span>{p.emoji}</span>
+                <span>{p.name}{p.id === pid ? ' (我)' : ''}</span>
+                {token && <span className="lobby-token-name">{token.name}</span>}
+                {p.isAi && <span className="tag">AI</span>}
+              </div>
+            );
+          })}
         </div>
-        <p className="home-hint">等待大屏上点击「开始游戏」…</p>
+        <p className="home-hint">等待大屏上点击“开始游戏”。</p>
       </div>
     );
   }
@@ -112,14 +119,15 @@ export default function Play() {
   if (!me) {
     return (
       <div className="play-join">
-        <h1>😔 本局没有你的座位</h1>
-        <p className="home-hint">这一局开始时你不在房间里, 等下一局吧</p>
+        <h1>🎭 本局没有你的座位</h1>
+        <p className="home-hint">这一局开始时你不在房间里，等下一局吧。</p>
       </div>
     );
   }
 
   const current = game.players.find((p) => p.id === game.currentPlayer);
   const myTile = getTile(me.position);
+  const myToken = getPlayerToken(me.tokenId);
 
   return (
     <div className="play" style={{ borderTopColor: me.color }}>
@@ -128,6 +136,7 @@ export default function Play() {
           <span className="play-header-emoji">{me.emoji}</span>
           <div>
             <div className="play-header-name">{me.name}</div>
+            {myToken && <div className="play-header-token">{myToken.name}</div>}
             <div className="play-header-pos">📍 {myTile.name}{me.inJail ? ' (蹲监狱中)' : ''}</div>
           </div>
         </div>
@@ -139,7 +148,7 @@ export default function Play() {
           ? '🏁 游戏结束'
           : game.currentPlayer === pid
             ? '🎯 轮到你了!'
-            : `等待 ${current?.emoji} ${current?.name}…`}
+            : `等待 ${current?.emoji} ${current?.name}...`}
       </div>
 
       <main className="play-main">
@@ -151,12 +160,55 @@ export default function Play() {
 
       <nav className="play-tabs">
         <button className={tab === 'action' ? 'active' : ''} onClick={() => setTab('action')}>🎲 行动</button>
-        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>🏠 资产</button>
+        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>🏘️ 资产</button>
         <button className={tab === 'trade' ? 'active' : ''} onClick={() => setTab('trade')}>🤝 交易</button>
-        <button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>📘 讲解</button>
+        <button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>📖 讲解</button>
       </nav>
 
       {toast && <div className="toast">{toast}</div>}
     </div>
+  );
+}
+
+function TokenPicker({ selectedId, onSelect }: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  const historical = PLAYER_TOKENS.filter((token) => token.category === 'historical');
+  const mascots = PLAYER_TOKENS.filter((token) => token.category === 'mascot');
+  return (
+    <div className="token-picker">
+      <div className="token-picker-title">选择棋子</div>
+      <TokenGroup title="历史人物" tokens={historical} selectedId={selectedId} onSelect={onSelect} />
+      <TokenGroup title="加拿大吉祥物" tokens={mascots} selectedId={selectedId} onSelect={onSelect} />
+    </div>
+  );
+}
+
+function TokenGroup({ title, tokens, selectedId, onSelect }: {
+  title: string;
+  tokens: PlayerToken[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="token-group">
+      <div className="token-group-title">{title}</div>
+      <div className="token-grid">
+        {tokens.map((token) => (
+          <button
+            key={token.id}
+            type="button"
+            className={`token-choice ${selectedId === token.id ? 'selected' : ''}`}
+            onClick={() => onSelect(token.id)}
+            title={`${token.name} - ${token.subtitle}`}
+          >
+            <span className="token-choice-emoji">{token.emoji}</span>
+            <span className="token-choice-name">{token.name}</span>
+            <span className="token-choice-subtitle">{token.subtitle}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

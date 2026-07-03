@@ -5,7 +5,7 @@ import type { Action, GameEvent, GameState } from '@monopoly/shared';
 export const socket = io();
 
 export interface LobbyPlayer {
-  id: string; name: string; emoji: string; color: string; isAi: boolean; connected: boolean;
+  id: string; name: string; emoji: string; tokenId?: string; color: string; isAi: boolean; connected: boolean;
 }
 
 export interface RoomSnapshot {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { BOARD, GROUP_COLORS, isOwnable } from '@monopoly/shared';
+import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
 import type { GameState, Tile } from '@monopoly/shared';
 
 /** 40 格在 11×11 网格中的位置 (1-indexed) */
@@ -84,16 +84,19 @@ function TileView({ tile, game, positions }: {
       </div>
       {tokens.length > 0 && (
         <div className="tile-tokens">
-          {tokens.map((p) => (
-            <span
-              key={`${p.id}-${positions[p.id] ?? p.position}`}
-              className="token"
-              style={{ borderColor: p.color, background: `${p.color}33` }}
-              title={p.name}
-            >
-              {p.emoji}
-            </span>
-          ))}
+          {tokens.map((p) => {
+            const token = getPlayerToken(p.tokenId);
+            return (
+              <span
+                key={`${p.id}-${positions[p.id] ?? p.position}`}
+                className="token"
+                style={{ borderColor: p.color, background: `${p.color}33` }}
+                title={`${p.name}${token ? ` - ${token.name}` : ''}`}
+              >
+                {p.emoji}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
