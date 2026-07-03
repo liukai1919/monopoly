@@ -53,6 +53,7 @@ export function createGame(
     doublesCount: 0,
     suppressDoubles: false,
     pendingBuyTile: null,
+    pendingCard: null,
     auction: null,
     debts: [],
     trade: null,
@@ -61,7 +62,7 @@ export function createGame(
     pot: 0,
     turnCount: 0,
     winner: null,
-    settings: { freeParkingPot: false, maxTurns: null, ...settings },
+    settings: { freeParkingPot: false, maxTurns: null, diceStyle: 'classic', soundEnabled: true, ...settings },
     log: [],
   };
   log(state, `游戏开始! 每人 $${START_CASH}, ${players[0]!.name} 先行`);
@@ -122,6 +123,16 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       player.inJail = false;
       player.jailTurns = 0;
       log(s, `${player.name} 使用出狱卡出狱`);
+      return null;
+    }
+    case 'draw-card': {
+      if (s.phase !== 'awaiting-card' || !isCurrent || !s.pendingCard || s.pendingCard.playerId !== player.id) {
+        return '现在不能抽牌';
+      }
+      const pending = s.pendingCard;
+      s.pendingCard = null;
+      drawCard(s, ctx, player, pending.deck, pending.diceSum);
+      settleFlow(s, ctx);
       return null;
     }
     case 'buy': {
@@ -419,7 +430,7 @@ function resolveLanding(
       return;
     case 'chance':
     case 'chest':
-      drawCard(s, ctx, player, tile.type, diceSum);
+      queueCardDraw(s, player, tile.type, diceSum);
       return;
     case 'go-to-jail':
       sendToJail(s, ctx, player);
@@ -447,6 +458,15 @@ function drawCard(
   ctx.events.push({ type: 'card', deck, text: card.text, playerId: player.id });
   log(s, `${player.name} 抽到${deck === 'chance' ? '机会' : '宝箱'}卡:「${card.text}」`);
   applyCardEffect(s, ctx, player, card, diceSum);
+}
+
+function queueCardDraw(
+  s: GameState, player: PlayerState, deck: 'chance' | 'chest', diceSum: number,
+): void {
+  const tile = getTile(player.position);
+  s.pendingCard = { playerId: player.id, deck, diceSum, tileId: tile.id };
+  const deckName = deck === 'chance' ? '机会' : '宝箱';
+  log(s, `${player.name} 来到${deckName}格, 请在手机上亲手抽一张${deckName}卡`);
 }
 
 function applyCardEffect(
@@ -792,6 +812,10 @@ function settleFlow(s: GameState, ctx: Ctx): void {
     s.phase = 'auction';
     return;
   }
+  if (s.pendingCard) {
+    s.phase = 'awaiting-card';
+    return;
+  }
   if (s.pendingBuyTile != null) {
     s.phase = 'awaiting-buy';
     return;
@@ -816,6 +840,7 @@ function continueTurn(s: GameState, ctx: Ctx): void {
 function advanceTurn(s: GameState, ctx: Ctx): void {
   s.trade = null;
   s.pendingBuyTile = null;
+  s.pendingCard = null;
   s.turnCount += 1;
 
   if (s.settings.maxTurns && s.turnCount >= s.settings.maxTurns) {

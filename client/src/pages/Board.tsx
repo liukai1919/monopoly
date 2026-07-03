@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import type { GameEvent } from '@monopoly/shared';
+import type { DiceStyle, GameEvent } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import BoardGrid from '../board/BoardGrid';
 import CenterStage from '../board/CenterStage';
@@ -14,6 +15,7 @@ export default function Board() {
   const { room, eventsSeq } = useRoom();
   const [error, setError] = useState('');
   const [joinUrl, setJoinUrl] = useState('');
+  useBoardSounds(room, eventsSeq);
 
   // 大屏挂载 & 断线重连时 (重新) 认领房间
   useEffect(() => {
@@ -136,6 +138,83 @@ export default function Board() {
   );
 }
 
+// ================= 音效 =================
+
+function useBoardSounds(room: ReturnType<typeof useRoom>['room'], eventsSeq: number) {
+  const ctxRef = useRef<AudioContext | null>(null);
+  const lastSeqRef = useRef(0);
+
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = getAudioContext(ctxRef);
+      void ctx?.resume();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!room?.game?.settings.soundEnabled || eventsSeq === lastSeqRef.current) return;
+    lastSeqRef.current = eventsSeq;
+    const ctx = getAudioContext(ctxRef);
+    if (!ctx) return;
+    for (const event of room.events) {
+      if (event.type === 'dice') playDice(ctx);
+      if (event.type === 'move') playMove(ctx, event.path.length);
+      if (event.type === 'card') playCard(ctx, event.deck);
+      if (event.type === 'game-over') playFanfare(ctx);
+    }
+  }, [eventsSeq, room]);
+}
+
+function getAudioContext(ref: MutableRefObject<AudioContext | null>): AudioContext | null {
+  if (ref.current) return ref.current;
+  const win = window as Window & { webkitAudioContext?: typeof AudioContext };
+  const Ctor = window.AudioContext ?? win.webkitAudioContext;
+  if (!Ctor) return null;
+  ref.current = new Ctor();
+  return ref.current;
+}
+
+function beep(ctx: AudioContext, at: number, freq: number, duration: number, volume = 0.08, type: OscillatorType = 'sine') {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, at);
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.exponentialRampToValueAtTime(volume, at + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(at);
+  osc.stop(at + duration + 0.02);
+}
+
+function playDice(ctx: AudioContext) {
+  const t = ctx.currentTime;
+  [220, 330, 260, 390].forEach((freq, i) => beep(ctx, t + i * 0.06, freq, 0.05, 0.07, 'square'));
+}
+
+function playMove(ctx: AudioContext, steps: number) {
+  const t = ctx.currentTime;
+  const count = Math.min(steps, 12);
+  for (let i = 0; i < count; i++) beep(ctx, t + i * 0.045, 520 + i * 12, 0.025, 0.035, 'triangle');
+}
+
+function playCard(ctx: AudioContext, deck: 'chance' | 'chest') {
+  const t = ctx.currentTime;
+  const base = deck === 'chance' ? 620 : 480;
+  [base, base * 1.25, base * 1.5].forEach((freq, i) => beep(ctx, t + i * 0.08, freq, 0.12, 0.06));
+}
+
+function playFanfare(ctx: AudioContext) {
+  const t = ctx.currentTime;
+  [523, 659, 784, 1046].forEach((freq, i) => beep(ctx, t + i * 0.12, freq, 0.18, 0.075));
+}
+
 // ================= 大厅 =================
 
 function Lobby({ code, joinUrl, room }: {
@@ -145,11 +224,13 @@ function Lobby({ code, joinUrl, room }: {
 }) {
   const [freeParkingPot, setFreeParkingPot] = useState(false);
   const [maxTurns, setMaxTurns] = useState<number>(0);
+  const [diceStyle, setDiceStyle] = useState<DiceStyle>('classic');
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [startError, setStartError] = useState('');
 
   async function start() {
     const res = await emitAck('lobby:start', {
-      code, freeParkingPot, maxTurns: maxTurns || null,
+      code, freeParkingPot, maxTurns: maxTurns || null, diceStyle, soundEnabled,
     });
     if (res?.error) setStartError(res.error);
   }
@@ -199,6 +280,22 @@ function Lobby({ code, joinUrl, room }: {
                 <option value={200}>约 1 小时 (200 手结算)</option>
                 <option value={400}>约 2 小时 (400 手结算)</option>
               </select>
+            </label>
+            <label>
+              骰子风格
+              <select value={diceStyle} onChange={(e) => setDiceStyle(e.target.value as DiceStyle)}>
+                <option value="classic">经典点数</option>
+                <option value="maple">枫叶红</option>
+                <option value="neon">数字霓虹</option>
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={soundEnabled}
+                onChange={(e) => setSoundEnabled(e.target.checked)}
+              />
+              开启音效
             </label>
           </div>
 

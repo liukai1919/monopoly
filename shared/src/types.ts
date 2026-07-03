@@ -3,22 +3,28 @@ export type ColorGroup =
   | 'brown' | 'lightblue' | 'pink' | 'orange'
   | 'red' | 'yellow' | 'green' | 'darkblue';
 
-export interface PropertyTile {
-  type: 'property';
+export type DiceStyle = 'classic' | 'maple' | 'neon';
+
+interface TileBase {
   id: number;
   name: string;      // 中文名
   nameEn: string;    // 英文名
+  instruction: string;
+}
+
+export interface PropertyTile extends TileBase {
+  type: 'property';
   group: ColorGroup;
   price: number;
   houseCost: number;
   /** 租金表: [空地, 1房, 2房, 3房, 4房, 酒店] */
   rent: [number, number, number, number, number, number];
 }
-export interface RailroadTile { type: 'railroad'; id: number; name: string; nameEn: string; price: number; }
-export interface UtilityTile { type: 'utility'; id: number; name: string; nameEn: string; price: number; }
-export interface TaxTile { type: 'tax'; id: number; name: string; nameEn: string; amount: number; }
-export interface CardTile { type: 'chance' | 'chest'; id: number; name: string; nameEn: string; }
-export interface CornerTile { type: 'go' | 'jail' | 'free-parking' | 'go-to-jail'; id: number; name: string; nameEn: string; }
+export interface RailroadTile extends TileBase { type: 'railroad'; price: number; }
+export interface UtilityTile extends TileBase { type: 'utility'; price: number; }
+export interface TaxTile extends TileBase { type: 'tax'; amount: number; }
+export interface CardTile extends TileBase { type: 'chance' | 'chest'; }
+export interface CornerTile extends TileBase { type: 'go' | 'jail' | 'free-parking' | 'go-to-jail'; }
 
 export type Tile = PropertyTile | RailroadTile | UtilityTile | TaxTile | CardTile | CornerTile;
 export type OwnableTile = PropertyTile | RailroadTile | UtilityTile;
@@ -62,6 +68,7 @@ export interface Ownership {
 export type TurnPhase =
   | 'awaiting-roll'   // 等当前玩家掷骰(含监狱决策)
   | 'awaiting-buy'    // 落在无主地: 买 or 送拍卖
+  | 'awaiting-card'   // 落在机会/宝箱: 等玩家亲手抽牌
   | 'auction'         // 拍卖进行中
   | 'awaiting-debt'   // 有人资不抵债, 变卖筹钱中
   | 'manage'          // 本回合行动结束, 可管理资产/交易, 然后结束回合
@@ -88,9 +95,18 @@ export interface Debt {
 export interface TradeSide { cash: number; properties: number[]; jailCards: number; }
 export interface TradeOffer { id: string; from: string; to: string; give: TradeSide; get: TradeSide; }
 
+export interface PendingCardDraw {
+  playerId: string;
+  deck: 'chance' | 'chest';
+  diceSum: number;
+  tileId: number;
+}
+
 export interface GameSettings {
   freeParkingPot: boolean;      // 房规: 税款进免费停车奖池
   maxTurns: number | null;      // 回合上限, 到达后按净资产分胜负 (null = 玩到只剩一人)
+  diceStyle: DiceStyle;
+  soundEnabled: boolean;
 }
 
 export interface LogEntry { text: string; ts: number; }
@@ -106,6 +122,7 @@ export interface GameState {
   doublesCount: number;
   suppressDoubles: boolean;     // 出狱那次掷骰即使双数也不能续掷
   pendingBuyTile: number | null;
+  pendingCard: PendingCardDraw | null;
   auction: AuctionState | null;
   debts: Debt[];
   trade: TradeOffer | null;
@@ -123,6 +140,7 @@ export type Action =
   | { type: 'roll' }
   | { type: 'jail-pay' }
   | { type: 'jail-card' }
+  | { type: 'draw-card' }
   | { type: 'buy' }
   | { type: 'decline-buy' }
   | { type: 'bid'; amount: number }

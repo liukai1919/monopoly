@@ -36,6 +36,7 @@ export default function ActionPanel({ game, meId, act }: Props) {
 
       {game.phase === 'auction' && <AuctionBidder game={game} meId={meId} act={act} />}
       {game.phase === 'awaiting-debt' && <DebtSection game={game} meId={meId} act={act} />}
+      {game.phase === 'awaiting-card' && <CardDrawSection game={game} meId={meId} act={act} />}
 
       {game.phase === 'awaiting-roll' && isMyTurn && (
         me.inJail ? <JailOptions game={game} meId={meId} act={act} /> : (
@@ -66,6 +67,37 @@ export default function ActionPanel({ game, meId, act }: Props) {
           {game.trade == null && <p className="home-hint">可以先去「交易」页跟别人谈生意</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------- 抽牌 ----------------
+
+function CardDrawSection({ game, meId, act }: Props) {
+  const pending = game.pendingCard;
+  if (!pending) return null;
+  const player = game.players.find((p) => p.id === pending.playerId);
+  const tile = getTile(pending.tileId);
+  const deckName = pending.deck === 'chance' ? '机会' : '宝箱';
+  const isMine = pending.playerId === meId;
+
+  if (!isMine) {
+    return (
+      <div className="panel-note">
+        ⏳ 等 {player?.name} 抽{deckName}卡…
+        <p className="home-hint">{tile.instruction}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`panel-card card-draw-panel card-draw-${pending.deck}`}>
+      <div className="card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}卡</div>
+      <div className="panel-card-title">你来到了 {tile.name}</div>
+      <p className="home-hint">{tile.instruction}</p>
+      <button className="btn btn-primary btn-xl card-draw-btn" onClick={() => act({ type: 'draw-card' })}>
+        亲手抽一张
+      </button>
     </div>
   );
 }

@@ -59,6 +59,7 @@ function TileView({ tile, game, positions }: {
   return (
     <div
       className={`tile tile-${side} ${own?.mortgaged ? 'tile-mortgaged' : ''}`}
+      title={`${tile.name}: ${tile.instruction}`}
       style={{
         gridRow: row,
         gridColumn: col,
@@ -77,6 +78,7 @@ function TileView({ tile, game, positions }: {
       <div className="tile-body">
         {tile.type !== 'property' && <div className="tile-icon">{tileIcon(tile)}</div>}
         <div className="tile-name">{tile.name}</div>
+        <div className="tile-instruction">{tile.instruction}</div>
         {isOwnable(tile) && !owner && <div className="tile-price">${tile.price}</div>}
         {own?.mortgaged && <div className="tile-mort-mark">已抵押</div>}
       </div>

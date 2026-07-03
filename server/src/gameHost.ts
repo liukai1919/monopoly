@@ -53,7 +53,7 @@ function scheduleAi(io: Server, room: Room): void {
     const error = applyPlayerAction(io, room, aiActor, action);
     if (error) {
       console.warn(`[${room.code}] AI ${aiActor} 的 ${action.type} 被拒绝: ${error}, 尝试兜底动作`);
-      for (const fallback of ['end-turn', 'pass-bid', 'decline-buy', 'roll'] as const) {
+      for (const fallback of ['draw-card', 'end-turn', 'pass-bid', 'decline-buy', 'roll'] as const) {
         if (!applyPlayerAction(io, room, aiActor, { type: fallback })) return;
       }
     }

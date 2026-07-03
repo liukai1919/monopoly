@@ -1,4 +1,6 @@
-import type { ColorGroup, OwnableTile, PropertyTile, Tile } from './types';
+import type {
+  CardTile, ColorGroup, CornerTile, OwnableTile, PropertyTile, RailroadTile, TaxTile, Tile, UtilityTile,
+} from './types';
 
 export const GO_SALARY = 200;
 export const JAIL_POS = 10;
@@ -12,49 +14,102 @@ const P = (
   id: number, name: string, nameEn: string, group: ColorGroup,
   price: number, houseCost: number,
   rent: [number, number, number, number, number, number],
-): PropertyTile => ({ type: 'property', id, name, nameEn, group, price, houseCost, rent });
+): PropertyTile => ({
+  type: 'property',
+  id,
+  name,
+  nameEn,
+  group,
+  price,
+  houseCost,
+  rent,
+  instruction: `买地 / 收租 / 集齐同色后盖房`,
+});
+
+const R = (id: number, name: string, nameEn: string): RailroadTile => ({
+  type: 'railroad',
+  id,
+  name,
+  nameEn,
+  price: 200,
+  instruction: '买铁路, 拥有越多租金越高',
+});
+
+const U = (id: number, name: string, nameEn: string): UtilityTile => ({
+  type: 'utility',
+  id,
+  name,
+  nameEn,
+  price: 150,
+  instruction: '买公用事业, 按骰点收租',
+});
+
+const T = (id: number, name: string, nameEn: string, amount: number): TaxTile => ({
+  type: 'tax',
+  id,
+  name,
+  nameEn,
+  amount,
+  instruction: `向银行缴税 $${amount}`,
+});
+
+const C = (type: CardTile['type'], id: number, name: string, nameEn: string): CardTile => ({
+  type,
+  id,
+  name,
+  nameEn,
+  instruction: type === 'chance' ? '停在这里, 亲手抽机会卡' : '停在这里, 亲手抽宝箱卡',
+});
+
+const O = (type: CornerTile['type'], id: number, name: string, nameEn: string, instruction: string): CornerTile => ({
+  type,
+  id,
+  name,
+  nameEn,
+  instruction,
+});
 
 /** 加拿大版 40 格棋盘, 索引 0 = 起点, 顺时针 */
 export const BOARD: Tile[] = [
-  { type: 'go', id: 0, name: '起点', nameEn: 'GO' },
+  O('go', 0, '起点', 'GO', `经过或停在这里领取 $${GO_SALARY}`),
   P(1, '圣约翰斯', "St. John's", 'brown', 60, 50, [2, 10, 30, 90, 160, 250]),
-  { type: 'chest', id: 2, name: '宝箱', nameEn: 'Community Chest' },
+  C('chest', 2, '宝箱', 'Community Chest'),
   P(3, '夏洛特敦', 'Charlottetown', 'brown', 60, 50, [4, 20, 60, 180, 320, 450]),
-  { type: 'tax', id: 4, name: '所得税', nameEn: 'Income Tax', amount: 200 },
-  { type: 'railroad', id: 5, name: 'VIA 铁路', nameEn: 'VIA Rail', price: 200 },
+  T(4, '所得税', 'Income Tax', 200),
+  R(5, 'VIA 铁路', 'VIA Rail'),
   P(6, '蒙克顿', 'Moncton', 'lightblue', 100, 50, [6, 30, 90, 270, 400, 550]),
-  { type: 'chance', id: 7, name: '机会', nameEn: 'Chance' },
+  C('chance', 7, '机会', 'Chance'),
   P(8, '弗雷德里克顿', 'Fredericton', 'lightblue', 100, 50, [6, 30, 90, 270, 400, 550]),
   P(9, '哈利法克斯', 'Halifax', 'lightblue', 120, 50, [8, 40, 100, 300, 450, 600]),
-  { type: 'jail', id: 10, name: '监狱 (探监)', nameEn: 'Jail' },
+  O('jail', 10, '监狱 (探监)', 'Jail', '路过只是探监, 入狱后需保释或掷双数'),
   P(11, '里贾纳', 'Regina', 'pink', 140, 100, [10, 50, 150, 450, 625, 750]),
-  { type: 'utility', id: 12, name: '水电公司', nameEn: 'Hydro Power', price: 150 },
+  U(12, '水电公司', 'Hydro Power'),
   P(13, '萨斯卡通', 'Saskatoon', 'pink', 140, 100, [10, 50, 150, 450, 625, 750]),
   P(14, '温尼伯', 'Winnipeg', 'pink', 160, 100, [12, 60, 180, 500, 700, 900]),
-  { type: 'railroad', id: 15, name: 'CN 铁路', nameEn: 'CN Rail', price: 200 },
+  R(15, 'CN 铁路', 'CN Rail'),
   P(16, '温莎', 'Windsor', 'orange', 180, 100, [14, 70, 200, 550, 750, 950]),
-  { type: 'chest', id: 17, name: '宝箱', nameEn: 'Community Chest' },
+  C('chest', 17, '宝箱', 'Community Chest'),
   P(18, '哈密尔顿', 'Hamilton', 'orange', 180, 100, [14, 70, 200, 550, 750, 950]),
   P(19, '伦敦', 'London', 'orange', 200, 100, [16, 80, 220, 600, 800, 1000]),
-  { type: 'free-parking', id: 20, name: '免费停车', nameEn: 'Free Parking' },
+  O('free-parking', 20, '免费停车', 'Free Parking', '休息一回合; 开启房规时可领取奖池'),
   P(21, '魁北克城', 'Quebec City', 'red', 220, 150, [18, 90, 250, 700, 875, 1050]),
-  { type: 'chance', id: 22, name: '机会', nameEn: 'Chance' },
+  C('chance', 22, '机会', 'Chance'),
   P(23, '拉瓦尔', 'Laval', 'red', 220, 150, [18, 90, 250, 700, 875, 1050]),
   P(24, '蒙特利尔', 'Montreal', 'red', 240, 150, [20, 100, 300, 750, 925, 1100]),
-  { type: 'railroad', id: 25, name: 'CP 铁路', nameEn: 'CP Rail', price: 200 },
+  R(25, 'CP 铁路', 'CP Rail'),
   P(26, '密西沙加', 'Mississauga', 'yellow', 260, 150, [22, 110, 330, 800, 975, 1150]),
   P(27, '布兰普顿', 'Brampton', 'yellow', 260, 150, [22, 110, 330, 800, 975, 1150]),
-  { type: 'utility', id: 28, name: '自来水厂', nameEn: 'Water Works', price: 150 },
+  U(28, '自来水厂', 'Water Works'),
   P(29, '渥太华', 'Ottawa', 'yellow', 280, 150, [24, 120, 360, 850, 1025, 1200]),
-  { type: 'go-to-jail', id: 30, name: '入狱', nameEn: 'Go To Jail' },
+  O('go-to-jail', 30, '入狱', 'Go To Jail', '直接进监狱, 不经过起点'),
   P(31, '埃德蒙顿', 'Edmonton', 'green', 300, 200, [26, 130, 390, 900, 1100, 1275]),
   P(32, '维多利亚', 'Victoria', 'green', 300, 200, [26, 130, 390, 900, 1100, 1275]),
-  { type: 'chest', id: 33, name: '宝箱', nameEn: 'Community Chest' },
+  C('chest', 33, '宝箱', 'Community Chest'),
   P(34, '卡尔加里', 'Calgary', 'green', 320, 200, [28, 150, 450, 1000, 1200, 1400]),
-  { type: 'railroad', id: 35, name: '落基山之光', nameEn: 'Rocky Mountaineer', price: 200 },
-  { type: 'chance', id: 36, name: '机会', nameEn: 'Chance' },
+  R(35, '落基山之光', 'Rocky Mountaineer'),
+  C('chance', 36, '机会', 'Chance'),
   P(37, '温哥华', 'Vancouver', 'darkblue', 350, 200, [35, 175, 500, 1100, 1300, 1500]),
-  { type: 'tax', id: 38, name: '奢侈税', nameEn: 'Luxury Tax', amount: 100 },
+  T(38, '奢侈税', 'Luxury Tax', 100),
   P(39, '多伦多', 'Toronto', 'darkblue', 400, 200, [50, 200, 600, 1400, 1700, 2000]),
 ];
 

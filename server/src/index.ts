@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
 import { createGame } from '@monopoly/shared';
+import type { DiceStyle } from '@monopoly/shared';
 import { applyPlayerAction, broadcast } from './gameHost';
 import {
   AI_EMOJIS, AI_NAMES, PLAYER_COLORS, createRoom, getRoom, pickEmoji, sweepRooms, touch,
@@ -150,7 +151,13 @@ io.on('connection', (socket) => {
 
   // ---- 开局 ----
   socket.on('lobby:start', (
-    payload: { code?: string; freeParkingPot?: boolean; maxTurns?: number | null },
+    payload: {
+      code?: string;
+      freeParkingPot?: boolean;
+      maxTurns?: number | null;
+      diceStyle?: DiceStyle;
+      soundEnabled?: boolean;
+    },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
     const room = getRoom(payload?.code ?? data.code);
@@ -163,6 +170,8 @@ io.on('connection', (socket) => {
         {
           freeParkingPot: !!payload?.freeParkingPot,
           maxTurns: payload?.maxTurns && payload.maxTurns > 0 ? payload.maxTurns : null,
+          diceStyle: payload?.diceStyle ?? 'classic',
+          soundEnabled: payload?.soundEnabled ?? true,
         },
       );
       for (const gp of room.game.players) {

@@ -50,6 +50,9 @@ describe('棋盘与卡牌数据', () => {
     expect(BOARD).toHaveLength(40);
     BOARD.forEach((t, i) => expect(t.id).toBe(i));
   });
+  test('每个格子都有 instruction 说明', () => {
+    expect(BOARD.every((t) => t.instruction.trim().length > 0)).toBe(true);
+  });
   test('22 块地产 / 4 铁路 / 2 公用 / 8 色组', () => {
     const props = BOARD.filter((t) => t.type === 'property');
     expect(props).toHaveLength(22);
@@ -383,6 +386,8 @@ describe('卡牌效果', () => {
     player(s, 'a').position = 4;
     s.chanceDeck = [0, ...s.chanceDeck.filter((id) => id !== 0)];
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 7 机会
+    expect(s.phase).toBe('awaiting-card');
+    s = mustApply(s, 'a', { type: 'draw-card' });
     expect(player(s, 'a').position).toBe(0);
     expect(player(s, 'a').cash).toBe(1700);
     expect(s.phase).toBe('manage');
@@ -394,6 +399,8 @@ describe('卡牌效果', () => {
     player(s, 'a').position = 4;
     s.chanceDeck = [4, ...s.chanceDeck.filter((id) => id !== 4)];
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 7 机会 → 15 铁路
+    expect(s.phase).toBe('awaiting-card');
+    s = mustApply(s, 'a', { type: 'draw-card' });
     expect(player(s, 'a').position).toBe(15);
     expect(player(s, 'a').cash).toBe(1450); // 25 × 2 = 50
     expect(player(s, 'b').cash).toBe(1550);
@@ -408,6 +415,8 @@ describe('卡牌效果', () => {
     player(s, 'a').position = 39;
     s.chestDeck = [113, ...s.chestDeck.filter((id) => id !== 113)];
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 2 宝箱
+    expect(s.phase).toBe('awaiting-card');
+    s = mustApply(s, 'a', { type: 'draw-card' });
     // 3×$40 + $115 = $235, 途中经过起点 +$200
     expect(player(s, 'a').cash).toBe(1500 + 200 - 235);
   });
@@ -418,6 +427,8 @@ describe('卡牌效果', () => {
     s.chanceDeck = [8, ...s.chanceDeck.filter((id) => id !== 8)];
     const deckLen = s.chanceDeck.length;
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 7 机会
+    expect(s.phase).toBe('awaiting-card');
+    s = mustApply(s, 'a', { type: 'draw-card' });
     expect(player(s, 'a').jailCards).toEqual(['chance']);
     expect(s.chanceDeck.length).toBe(deckLen - 1);
   });
@@ -427,6 +438,8 @@ describe('卡牌效果', () => {
     player(s, 'a').position = 39;
     s.chestDeck = [108, ...s.chestDeck.filter((id) => id !== 108)];
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 2 宝箱
+    expect(s.phase).toBe('awaiting-card');
+    s = mustApply(s, 'a', { type: 'draw-card' });
     expect(player(s, 'a').cash).toBe(1500 + 200 + 20);
     expect(player(s, 'b').cash).toBe(1490);
     expect(player(s, 'c').cash).toBe(1490);

@@ -5,6 +5,7 @@ import type { Action } from '@monopoly/shared';
 import { emitAck, myPlayerId, sendAction, socket, useRoom } from '../api';
 import ActionPanel from '../play/ActionPanel';
 import AssetsPanel from '../play/AssetsPanel';
+import GuidePanel from '../play/GuidePanel';
 import TradePanel from '../play/TradePanel';
 
 export default function Play() {
@@ -14,7 +15,7 @@ export default function Play() {
   const [name, setName] = useState(localStorage.getItem('monopoly-name') ?? '');
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState('');
-  const [tab, setTab] = useState<'action' | 'assets' | 'trade'>('action');
+  const [tab, setTab] = useState<'action' | 'assets' | 'trade' | 'guide'>('action');
   const [toast, setToast] = useState('');
   const joinedRef = useRef(false);
 
@@ -145,12 +146,14 @@ export default function Play() {
         {tab === 'action' && <ActionPanel game={game} meId={pid} act={act} />}
         {tab === 'assets' && <AssetsPanel game={game} meId={pid} act={act} />}
         {tab === 'trade' && <TradePanel game={game} meId={pid} act={act} />}
+        {tab === 'guide' && <GuidePanel game={game} meId={pid} />}
       </main>
 
       <nav className="play-tabs">
         <button className={tab === 'action' ? 'active' : ''} onClick={() => setTab('action')}>🎲 行动</button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>🏠 资产</button>
         <button className={tab === 'trade' ? 'active' : ''} onClick={() => setTab('trade')}>🤝 交易</button>
+        <button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>📘 讲解</button>
       </nav>
 
       {toast && <div className="toast">{toast}</div>}

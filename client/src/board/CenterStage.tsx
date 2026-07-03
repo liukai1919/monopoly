@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import { getTile } from '@monopoly/shared';
-import type { GameState } from '@monopoly/shared';
+import type { DiceStyle, GameState } from '@monopoly/shared';
 import { socket } from '../api';
 
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+const DICE_PIPS: Record<number, number[]> = {
+  1: [5],
+  2: [1, 9],
+  3: [1, 5, 9],
+  4: [1, 3, 7, 9],
+  5: [1, 3, 5, 7, 9],
+  6: [1, 3, 4, 6, 7, 9],
+};
 
 export default function CenterStage({ game, code, shownDice, diceRolling, cardFlash }: {
   game: GameState;
@@ -13,6 +21,7 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
   cardFlash: { deck: string; text: string } | null;
 }) {
   const current = game.players.find((p) => p.id === game.currentPlayer);
+  const diceStyle = game.settings.diceStyle ?? 'classic';
 
   return (
     <div className="stage">
@@ -26,13 +35,13 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
         </div>
       )}
 
-      <div className={`stage-dice ${diceRolling ? 'rolling' : ''}`}>
+      <div className={`stage-dice dice-style-${diceStyle} ${diceRolling ? 'rolling' : ''}`}>
         {diceRolling ? (
-          <><span className="die">🎲</span><span className="die">🎲</span></>
+          <><DieFace style={diceStyle} rolling /><DieFace style={diceStyle} rolling /></>
         ) : shownDice ? (
           <>
-            <span className="die">{DICE_FACES[shownDice[0] - 1]}</span>
-            <span className="die">{DICE_FACES[shownDice[1] - 1]}</span>
+            <DieFace style={diceStyle} value={shownDice[0]} />
+            <DieFace style={diceStyle} value={shownDice[1]} />
           </>
         ) : (
           <span className="stage-dice-empty">等待掷骰…</span>
@@ -45,6 +54,7 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
 
       {game.phase === 'awaiting-debt' && game.debts[0] && <DebtBanner game={game} />}
       {game.trade && <TradeBanner game={game} />}
+      {game.phase === 'awaiting-card' && game.pendingCard && <CardDrawBanner game={game} />}
       {game.phase === 'auction' && game.auction && <AuctionPanel game={game} />}
 
       {cardFlash && (
@@ -59,15 +69,56 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
   );
 }
 
+function DieFace({ style, value, rolling = false }: { style: DiceStyle; value?: number; rolling?: boolean }) {
+  if (rolling || !value) {
+    return <span className="die die-rolling">{style === 'classic' ? '🎲' : '?'}</span>;
+  }
+  if (style === 'classic') return <span className="die die-classic">{DICE_FACES[value - 1]}</span>;
+
+  const pips = DICE_PIPS[value] ?? [];
+  return (
+    <span className={`die die-box die-${style}`} aria-label={`${value} 点`}>
+      <span className="die-pip-grid">
+        {Array.from({ length: 9 }, (_, i) => (
+          <span key={i} className={pips.includes(i + 1) ? 'die-pip on' : 'die-pip'} />
+        ))}
+      </span>
+      {style === 'maple' && <span className="die-maple-mark">🍁</span>}
+    </span>
+  );
+}
+
 function phaseHint(game: GameState) {
   switch (game.phase) {
     case 'awaiting-buy': {
       const tile = game.pendingBuyTile != null ? getTile(game.pendingBuyTile) : null;
       return <span className="stage-phase">正在考虑购买 {tile?.name}…</span>;
     }
+    case 'awaiting-card': {
+      const pending = game.pendingCard;
+      return (
+        <span className="stage-phase">
+          等待抽{pending?.deck === 'chance' ? '机会' : '宝箱'}卡…
+        </span>
+      );
+    }
     case 'manage': return <span className="stage-phase">整理资产中…</span>;
     default: return null;
   }
+}
+
+function CardDrawBanner({ game }: { game: GameState }) {
+  const pending = game.pendingCard!;
+  const player = game.players.find((p) => p.id === pending.playerId);
+  const tile = getTile(pending.tileId);
+  const deckName = pending.deck === 'chance' ? '机会' : '宝箱';
+  return (
+    <div className={`stage-card-draw stage-card-draw-${pending.deck}`}>
+      <div className="stage-card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}卡</div>
+      <div className="stage-card-draw-player">{player?.emoji} {player?.name} 请在手机上抽牌</div>
+      <div className="stage-card-draw-hint">{tile.instruction}</div>
+    </div>
+  );
 }
 
 function DebtBanner({ game }: { game: GameState }) {

@@ -48,6 +48,8 @@ export function decideAction(s: GameState, playerId: string): Action | null {
       }
       return { type: 'decline-buy' };
     }
+    case 'awaiting-card':
+      return s.pendingCard?.playerId === playerId ? { type: 'draw-card' } : null;
     case 'manage':
       return manageOr(s, playerId, { type: 'end-turn' });
     default:

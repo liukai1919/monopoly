@@ -176,6 +176,7 @@ export function whoMustAct(s: GameState): string[] {
     case 'game-over': return [];
     case 'auction': return s.auction ? [s.auction.turn] : [];
     case 'awaiting-debt': return s.debts.length ? [s.debts[0]!.debtor] : [];
+    case 'awaiting-card': return s.pendingCard ? [s.pendingCard.playerId] : [s.currentPlayer];
     default: return [s.currentPlayer];
   }
 }
