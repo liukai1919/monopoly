@@ -1,6 +1,7 @@
 export * from './types';
 export * from './board';
 export * from './cards';
+export * from './market';
 export * from './engine/helpers';
 export { AUCTION_TURN_MS, applyAction, createGame } from './engine/game';
 export type { SeatInfo } from './engine/game';

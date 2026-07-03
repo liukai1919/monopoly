@@ -3,9 +3,10 @@ import {
   groupTiles, isOwnable,
 } from '../board';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
+import { createEmptyPortfolio, createMarket, recordMarketEvent } from '../market';
 import type {
   Action, ApplyResult, AuctionState, Card, GameEvent, GameSettings, GameState,
-  PlayerState, RNG, TradeSide,
+  IndustryTag, PlayerState, RNG, TradeSide,
 } from '../types';
 import {
   alivePlayers, canBuild, canMortgage, canSellHouse, canUnmortgage, computeRent,
@@ -60,6 +61,8 @@ export function createGame(
     chanceDeck: shuffle(CHANCE_CARDS.map((c) => c.id), rng),
     chestDeck: shuffle(CHEST_CARDS.map((c) => c.id), rng),
     pot: 0,
+    market: createMarket(),
+    portfolios: Object.fromEntries(players.map((p) => [p.id, createEmptyPortfolio()])),
     turnCount: 0,
     winner: null,
     settings: { freeParkingPot: false, maxTurns: null, diceStyle: 'classic', soundEnabled: true, ...settings },
@@ -143,6 +146,13 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       player.cash -= tile.price;
       s.ownership[tile.id]!.owner = player.id;
       s.pendingBuyTile = null;
+      recordMarketEvent(s, {
+        kind: 'property-bought',
+        polarity: 'bullish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: tile.price,
+      });
       log(s, `${player.name} 以 $${tile.price} 买下了 ${tile.name}`);
       settleFlow(s, ctx);
       return null;
@@ -194,6 +204,14 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
         s.housesRemaining -= 1;
         log(s, `${player.name} 在 ${tile.name} 盖了第 ${own.houses} 栋房`);
       }
+      recordMarketEvent(s, {
+        kind: 'build',
+        polarity: 'bullish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: tile.houseCost,
+        industries: marketIndustries(['realEstate', ...tile.industries]),
+      });
       return null;
     }
     case 'sell-house': {
@@ -203,27 +221,39 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       const tile = getTile(action.tileId);
       if (tile.type !== 'property') return '该地块没有房子';
       const own = s.ownership[tile.id]!;
+      let saleProceeds = 0;
       if (own.houses === 5) {
         if (s.housesRemaining >= 4) {
           own.houses = 4;
           s.hotelsRemaining += 1;
           s.housesRemaining -= 4;
-          player.cash += Math.floor(tile.houseCost / 2);
-          log(s, `${player.name} 把 ${tile.name} 的酒店降级为 4 栋房 (+$${Math.floor(tile.houseCost / 2)})`);
+          saleProceeds = Math.floor(tile.houseCost / 2);
+          player.cash += saleProceeds;
+          log(s, `${player.name} 把 ${tile.name} 的酒店降级为 4 栋房 (+$${saleProceeds})`);
         } else {
           // 银行房子不够, 只能整体清拆
           const gain = Math.floor((5 * tile.houseCost) / 2);
           own.houses = 0;
           s.hotelsRemaining += 1;
+          saleProceeds = gain;
           player.cash += gain;
           log(s, `银行房屋短缺, ${player.name} 整体拆除了 ${tile.name} 的酒店 (+$${gain})`);
         }
       } else {
         own.houses -= 1;
         s.housesRemaining += 1;
-        player.cash += Math.floor(tile.houseCost / 2);
-        log(s, `${player.name} 卖掉了 ${tile.name} 的一栋房 (+$${Math.floor(tile.houseCost / 2)})`);
+        saleProceeds = Math.floor(tile.houseCost / 2);
+        player.cash += saleProceeds;
+        log(s, `${player.name} 卖掉了 ${tile.name} 的一栋房 (+$${saleProceeds})`);
       }
+      recordMarketEvent(s, {
+        kind: 'sell-house',
+        polarity: 'bearish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: saleProceeds,
+        industries: marketIndustries(['realEstate', ...tile.industries]),
+      });
       if (s.phase === 'awaiting-debt') settleFlow(s, ctx);
       return null;
     }
@@ -235,6 +265,14 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       if (!isOwnable(tile)) return '不能抵押';
       s.ownership[tile.id]!.mortgaged = true;
       player.cash += mortgageValue(tile);
+      recordMarketEvent(s, {
+        kind: 'mortgage',
+        polarity: 'bearish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: mortgageValue(tile),
+        industries: ['finance'],
+      });
       log(s, `${player.name} 抵押了 ${tile.name} (+$${mortgageValue(tile)})`);
       if (s.phase === 'awaiting-debt') settleFlow(s, ctx);
       return null;
@@ -247,6 +285,14 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       if (!isOwnable(tile)) return '不能赎回';
       player.cash -= unmortgageCost(tile);
       s.ownership[tile.id]!.mortgaged = false;
+      recordMarketEvent(s, {
+        kind: 'unmortgage',
+        polarity: 'bullish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: unmortgageCost(tile),
+        industries: ['finance'],
+      });
       log(s, `${player.name} 赎回了 ${tile.name} (-$${unmortgageCost(tile)})`);
       return null;
     }
@@ -415,6 +461,14 @@ function resolveLanding(
       const rent = computeRent(s, tile.id, diceSum, opts);
       if (rent > 0) {
         const owner = getPlayer(s, own.owner);
+        recordMarketEvent(s, {
+          kind: tile.type === 'railroad' ? 'railroad-rent' : tile.type === 'utility' ? 'utility-rent' : 'rent-paid',
+          polarity: 'bullish',
+          playerId: owner.id,
+          affectedPlayerId: player.id,
+          tileId: tile.id,
+          amount: rent,
+        });
         charge(s, player, rent, owner.id, `${tile.name} 的租金`);
       } else if (own.mortgaged) {
         log(s, `${tile.name} 已被抵押, 不用付租金`);
@@ -426,6 +480,14 @@ function resolveLanding(
   switch (tile.type) {
     case 'tax':
       log(s, `${player.name} 落在 ${tile.name}`);
+      recordMarketEvent(s, {
+        kind: 'tax-paid',
+        polarity: 'bearish',
+        playerId: player.id,
+        tileId: tile.id,
+        amount: tile.amount,
+        industries: ['finance'],
+      });
       charge(s, player, tile.amount, null, tile.name, true);
       return;
     case 'chance':
@@ -596,6 +658,14 @@ function executeBankruptcy(s: GameState, ctx: Ctx, debtorId: string): void {
   const debtor = getPlayer(s, debtorId);
   const debt = s.debts.find((d) => d.debtor === debtorId)!;
   const creditor = debt.creditor ? getPlayer(s, debt.creditor) : null;
+  recordMarketEvent(s, {
+    kind: 'bankruptcy',
+    polarity: 'bearish',
+    playerId: debtor.id,
+    affectedPlayerId: creditor?.id,
+    amount: debt.amount,
+    industries: ['finance', 'realEstate'],
+  });
   log(s, `${debtor.name} 破产了! 全部资产移交给${creditor ? creditor.name : '银行'}`);
 
   // 建筑折半卖回银行, 收益并入现金
@@ -726,6 +796,15 @@ function finishAuction(s: GameState, ctx: Ctx, sold: boolean): void {
     const winner = getPlayer(s, a.highBidder);
     winner.cash -= a.highBid;
     s.ownership[a.tileId]!.owner = winner.id;
+    if (isOwnable(tile)) {
+      recordMarketEvent(s, {
+        kind: 'property-bought',
+        polarity: 'bullish',
+        playerId: winner.id,
+        tileId: tile.id,
+        amount: a.highBid,
+      });
+    }
     log(s, `${winner.name} 以 $${a.highBid} 拍得 ${tile.name}!`);
   } else {
     log(s, `没有人出价, ${tile.name} 流拍, 仍归银行所有`);
@@ -874,4 +953,8 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
 function log(s: GameState, text: string): void {
   s.log.push({ text, ts: Date.now() });
   if (s.log.length > 80) s.log.splice(0, s.log.length - 80);
+}
+
+function marketIndustries(industries: IndustryTag[]): IndustryTag[] {
+  return [...new Set(industries)];
 }

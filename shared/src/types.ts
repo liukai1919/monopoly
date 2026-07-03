@@ -4,12 +4,32 @@ export type ColorGroup =
   | 'red' | 'yellow' | 'green' | 'darkblue';
 
 export type DiceStyle = 'classic' | 'maple' | 'neon';
+export type IndustryTag =
+  | 'realEstate'
+  | 'finance'
+  | 'energy'
+  | 'tech'
+  | 'logistics'
+  | 'utilities'
+  | 'tourism'
+  | 'industrial';
+
+export type EtfId =
+  | 'CAN-REAL'
+  | 'CAN-FIN'
+  | 'CAN-ENE'
+  | 'CAN-TECH'
+  | 'CAN-LOGI'
+  | 'CAN-UTIL'
+  | 'CAN-TOUR'
+  | 'CAN-IND';
 
 interface TileBase {
   id: number;
   name: string;      // 中文名
   nameEn: string;    // 英文名
   instruction: string;
+  industries: IndustryTag[];
 }
 
 export interface PropertyTile extends TileBase {
@@ -102,6 +122,58 @@ export interface PendingCardDraw {
   tileId: number;
 }
 
+export type MarketRegime = 'bull' | 'neutral' | 'bear';
+export type MarketPolarity = 'bullish' | 'bearish';
+export type MarketEventKind =
+  | 'property-bought'
+  | 'rent-paid'
+  | 'railroad-rent'
+  | 'utility-rent'
+  | 'build'
+  | 'sell-house'
+  | 'mortgage'
+  | 'unmortgage'
+  | 'tax-paid'
+  | 'bankruptcy';
+
+export type IndustryScoreMap = Record<IndustryTag, number>;
+export type Portfolio = Record<EtfId, number>;
+
+export interface EtfState {
+  id: EtfId;
+  name: string;
+  industries: IndustryTag[];
+  priceCents: number;
+  lastPriceCents: number;
+  historyCents: number[];
+}
+
+export interface MarketEvent {
+  id: string;
+  turn: number;
+  kind: MarketEventKind;
+  industry: IndustryTag;
+  etfId: EtfId;
+  polarity: MarketPolarity;
+  magnitude: number;
+  playerId?: string;
+  affectedPlayerId?: string;
+  tileId?: number;
+  amount?: number;
+  headline: string;
+  driverText: string;
+}
+
+export interface MarketState {
+  regime: MarketRegime;
+  etfs: Record<EtfId, EtfState>;
+  signals: IndustryScoreMap;
+  activityThisTurn: IndustryScoreMap;
+  sentimentThisTurn: IndustryScoreMap;
+  totalActivityThisTurn: number;
+  recentEvents: MarketEvent[];
+}
+
 export interface GameSettings {
   freeParkingPot: boolean;      // 房规: 税款进免费停车奖池
   maxTurns: number | null;      // 回合上限, 到达后按净资产分胜负 (null = 玩到只剩一人)
@@ -129,6 +201,8 @@ export interface GameState {
   chanceDeck: number[];
   chestDeck: number[];
   pot: number;                  // 免费停车奖池
+  market: MarketState;
+  portfolios: Record<string, Portfolio>;
   turnCount: number;
   winner: string | null;
   settings: GameSettings;

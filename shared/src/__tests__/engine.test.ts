@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  BOARD, CHANCE_CARDS, CHEST_CARDS, applyAction, canBuild, computeRent, createGame,
+  BOARD, CHANCE_CARDS, CHEST_CARDS, ETF_DEFINITIONS, applyAction, canBuild, computeRent, createGame,
   groupTiles, isOwnable,
 } from '../index';
 import type { Action, GameState, RNG, SeatInfo } from '../index';
@@ -52,6 +52,9 @@ describe('棋盘与卡牌数据', () => {
   });
   test('每个格子都有 instruction 说明', () => {
     expect(BOARD.every((t) => t.instruction.trim().length > 0)).toBe(true);
+  });
+  test('每个可交易经济地块都有产业标签', () => {
+    expect(BOARD.filter((t) => isOwnable(t) || t.type === 'tax').every((t) => t.industries.length > 0)).toBe(true);
   });
   test('22 块地产 / 4 铁路 / 2 公用 / 8 色组', () => {
     const props = BOARD.filter((t) => t.type === 'property');
@@ -377,6 +380,62 @@ describe('交易', () => {
       get: { cash: 50, properties: [], jailCards: 0 },
     });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('股票市场数据联动', () => {
+  test('开局初始化 ETF 与玩家空持仓', () => {
+    const s = newGame(3);
+    expect(Object.keys(s.market.etfs)).toEqual(Object.keys(ETF_DEFINITIONS));
+    expect(s.market.regime).toBe('neutral');
+    for (const p of s.players) {
+      expect(s.portfolios[p.id]).toBeDefined();
+      expect(Object.values(s.portfolios[p.id]!)).toEqual(Object.keys(ETF_DEFINITIONS).map(() => 0));
+    }
+  });
+
+  test('购买城市地产产生对应产业的多头事件', () => {
+    let s = newGame();
+    player(s, 'a').position = 38;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 1 圣约翰斯
+    s = mustApply(s, 'a', { type: 'buy' });
+    const events = s.market.recentEvents.filter((e) => e.kind === 'property-bought');
+    expect(events.map((e) => e.industry).sort()).toEqual(['logistics', 'tourism']);
+    expect(events.every((e) => e.polarity === 'bullish')).toBe(true);
+    expect(s.market.signals.logistics).toBeGreaterThan(0);
+    expect(s.market.signals.tourism).toBeGreaterThan(0);
+  });
+
+  test('高额租金推动地块产业, 抵押压制金融', () => {
+    let s = newGame();
+    s.ownership[39]!.owner = 'b';
+    s.ownership[39]!.houses = 5;
+    player(s, 'a').cash = 3000;
+    player(s, 'a').position = 35;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 3)); // → 39 多伦多
+    const rentEvents = s.market.recentEvents.filter((e) => e.kind === 'rent-paid');
+    expect(rentEvents.map((e) => e.industry).sort()).toEqual(['finance', 'realEstate']);
+    expect(s.market.signals.finance).toBeGreaterThan(0);
+    expect(s.market.signals.realEstate).toBeGreaterThan(0);
+
+    s.ownership[1]!.owner = 'a';
+    s = mustApply(s, 'a', { type: 'mortgage', tileId: 1 });
+    const mortgageEvent = s.market.recentEvents.find((e) => e.kind === 'mortgage');
+    expect(mortgageEvent?.industry).toBe('finance');
+    expect(mortgageEvent?.polarity).toBe('bearish');
+  });
+
+  test('卖房产生地产利空事件', () => {
+    let s = newGame();
+    s.ownership[1]!.owner = 'a';
+    s.ownership[3]!.owner = 'a';
+    s.ownership[1]!.houses = 1;
+    s.housesRemaining = 31;
+    s = mustApply(s, 'a', { type: 'sell-house', tileId: 1 });
+    const sellEvents = s.market.recentEvents.filter((e) => e.kind === 'sell-house');
+    expect(sellEvents.some((e) => e.industry === 'realEstate')).toBe(true);
+    expect(sellEvents.every((e) => e.polarity === 'bearish')).toBe(true);
+    expect(s.market.signals.realEstate).toBeLessThan(0);
   });
 });
 
