@@ -1,12 +1,11 @@
 import { BOARD } from './board';
+import { STOCK_INITIAL_PRICE_CENTS, roundSignal, smoothSignal } from './pricingEngine';
 import type {
   EtfId, EtfState, GameState, IndustryScoreMap, IndustryTag, MarketEvent,
   MarketEventKind, MarketPolarity, MarketState, Portfolio,
 } from './types';
 
-const INITIAL_PRICE_CENTS = 10_000;
 const MAX_RECENT_EVENTS = 16;
-const SIGNAL_PRECISION = 4;
 
 export const ALL_INDUSTRIES: IndustryTag[] = [
   'realEstate',
@@ -70,9 +69,9 @@ export function createMarket(): MarketState {
       id,
       {
         ...def,
-        priceCents: INITIAL_PRICE_CENTS,
-        lastPriceCents: INITIAL_PRICE_CENTS,
-        historyCents: [INITIAL_PRICE_CENTS],
+        priceCents: STOCK_INITIAL_PRICE_CENTS,
+        lastPriceCents: STOCK_INITIAL_PRICE_CENTS,
+        historyCents: [STOCK_INITIAL_PRICE_CENTS],
       },
     ]),
   ) as Record<EtfId, EtfState>;
@@ -94,15 +93,15 @@ export function recordMarketEvent(s: GameState, input: MarketEventInput): void {
 
   const baseMagnitude = input.magnitude ?? magnitudeFromAmount(input.amount);
   const signedMagnitude = input.polarity === 'bullish' ? baseMagnitude : -baseMagnitude;
-  const perIndustrySignal = roundSignal(signedMagnitude / industries.length);
-  const perIndustryActivity = roundSignal(Math.abs(input.amount ?? baseMagnitude * 100) / industries.length);
-  s.market.totalActivityThisTurn = roundSignal(s.market.totalActivityThisTurn + Math.abs(input.amount ?? baseMagnitude * 100));
+  const perIndustrySignal = smoothSignal(signedMagnitude / industries.length);
+  const perIndustryActivity = smoothSignal(Math.abs(input.amount ?? baseMagnitude * 100) / industries.length);
+  s.market.totalActivityThisTurn = smoothSignal(s.market.totalActivityThisTurn + Math.abs(input.amount ?? baseMagnitude * 100));
 
   for (const industry of industries) {
     const etfId = ETF_BY_INDUSTRY[industry];
-    s.market.signals[industry] = roundSignal(s.market.signals[industry] + perIndustrySignal);
-    s.market.activityThisTurn[industry] = roundSignal(s.market.activityThisTurn[industry] + perIndustryActivity);
-    s.market.sentimentThisTurn[industry] = roundSignal(s.market.sentimentThisTurn[industry] + perIndustrySignal);
+    s.market.signals[industry] = smoothSignal(s.market.signals[industry] + perIndustrySignal);
+    s.market.activityThisTurn[industry] = smoothSignal(s.market.activityThisTurn[industry] + perIndustryActivity);
+    s.market.sentimentThisTurn[industry] = smoothSignal(s.market.sentimentThisTurn[industry] + perIndustrySignal);
     s.market.recentEvents.push(toMarketEvent(s, input, industry, etfId, Math.abs(perIndustrySignal)));
   }
 
@@ -220,10 +219,6 @@ function marketCopy(
         driverText: `${c.player} 的行动影响了${c.industry}`,
       };
   }
-}
-
-function roundSignal(value: number): number {
-  return Number(value.toFixed(SIGNAL_PRECISION));
 }
 
 function unique<T>(items: T[]): T[] {

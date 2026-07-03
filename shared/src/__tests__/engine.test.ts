@@ -437,6 +437,22 @@ describe('股票市场数据联动', () => {
     expect(sellEvents.every((e) => e.polarity === 'bearish')).toBe(true);
     expect(s.market.signals.realEstate).toBeLessThan(0);
   });
+
+  test('市场价格和衰减只在完整轮转结束时结算', () => {
+    let s = newGame(2);
+    s.market.signals.realEstate = 2;
+    s.phase = 'manage';
+    s = mustApply(s, 'a', { type: 'end-turn' });
+    expect(s.currentPlayer).toBe('b');
+    expect(s.market.etfs['CAN-REAL'].priceCents).toBe(10000);
+    expect(s.market.signals.realEstate).toBe(2);
+
+    s.phase = 'manage';
+    s = mustApply(s, 'b', { type: 'end-turn' });
+    expect(s.currentPlayer).toBe('a');
+    expect(s.market.etfs['CAN-REAL'].priceCents).toBeGreaterThan(10000);
+    expect(s.market.signals.realEstate).toBe(1.7);
+  });
 });
 
 describe('卡牌效果', () => {

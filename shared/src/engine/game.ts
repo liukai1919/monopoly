@@ -4,6 +4,7 @@ import {
 } from '../board';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
 import { createEmptyPortfolio, createMarket, recordMarketEvent } from '../market';
+import { settleMarketRound } from '../pricingEngine';
 import type {
   Action, ApplyResult, AuctionState, Card, GameEvent, GameSettings, GameState,
   IndustryTag, PlayerState, RNG, TradeSide,
@@ -933,13 +934,16 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
   }
 
   const idx = s.players.findIndex((p) => p.id === s.currentPlayer);
+  let nextIdx = idx;
   for (let i = 1; i <= s.players.length; i++) {
-    const next = s.players[(idx + i) % s.players.length]!;
+    nextIdx = (idx + i) % s.players.length;
+    const next = s.players[nextIdx]!;
     if (!next.bankrupt) {
       s.currentPlayer = next.id;
       break;
     }
   }
+  if (nextIdx <= idx) s.market = settleMarketRound(s.market);
   s.dice = null;
   s.doublesCount = 0;
   s.suppressDoubles = false;
