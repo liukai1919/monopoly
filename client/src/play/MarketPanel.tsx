@@ -10,9 +10,10 @@ export default function MarketPanel({ game, meId, act }: {
 }) {
   const me = game.players.find((p) => p.id === meId)!;
   const portfolio = game.portfolios[meId];
-  const isMyManagePhase = game.currentPlayer === meId && game.phase === 'manage';
+  const isMyTradingPhase = game.currentPlayer === meId
+    && (game.phase === 'awaiting-roll' || game.phase === 'manage');
   const isMyDebtPhase = game.phase === 'awaiting-debt' && game.debts[0]?.debtor === meId;
-  const canSell = isMyManagePhase || isMyDebtPhase;
+  const canSell = isMyTradingPhase || isMyDebtPhase;
 
   return (
     <div className="market-panel">
@@ -23,12 +24,12 @@ export default function MarketPanel({ game, meId, act }: {
         </div>
         <div>
           <span>交易状态</span>
-          <b>{isMyDebtPhase ? '火售筹钱' : isMyManagePhase ? '可交易' : '仅查看'}</b>
+          <b>{isMyDebtPhase ? '火售筹钱' : isMyTradingPhase ? '可交易' : '仅查看'}</b>
         </div>
       </div>
 
-      {!isMyManagePhase && !isMyDebtPhase && (
-        <p className="home-hint">证券交易在你的整理阶段开放；债务阶段可强制卖出 ETF 筹钱。</p>
+      {!isMyTradingPhase && !isMyDebtPhase && (
+        <p className="home-hint">证券交易在你的回合开放；债务阶段可强制卖出 ETF 筹钱。</p>
       )}
 
       {Object.keys(game.market.etfs).map((id) => {
@@ -75,7 +76,7 @@ export default function MarketPanel({ game, meId, act }: {
             <div className="market-actions">
               {!isMyDebtPhase && (
                 <button
-                  className={`btn btn-sm ${!isMyManagePhase || me.cash < buyCost ? 'btn-dim' : ''}`}
+                  className={`btn btn-sm ${!isMyTradingPhase || me.cash < buyCost ? 'btn-dim' : ''}`}
                   onClick={() => act({ type: 'buy-etf', etfId, shares: 1 })}
                 >
                   买 1 股 -${buyCost}

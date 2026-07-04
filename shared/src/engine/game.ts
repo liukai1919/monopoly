@@ -299,7 +299,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       return null;
     }
     case 'buy-etf': {
-      if (!(isCurrent && s.phase === 'manage')) return '只能在自己的整理阶段买入 ETF';
+      if (!(isCurrent && inTurnPhase)) return '只能在自己的回合管理阶段买入 ETF';
       const reason = validateEtfOrder(s, action.etfId, action.shares);
       if (reason) return reason;
       const portfolio = ensurePortfolio(s, player.id);
@@ -319,7 +319,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       return null;
     }
     case 'sell-etf': {
-      if (!((isCurrent && s.phase === 'manage') || isDebtor)) return '现在不能卖出 ETF';
+      if (!((isCurrent && inTurnPhase) || isDebtor)) return '现在不能卖出 ETF';
       const reason = validateEtfOrder(s, action.etfId, action.shares);
       if (reason) return reason;
       const portfolio = ensurePortfolio(s, player.id);

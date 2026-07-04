@@ -49,6 +49,21 @@ describe('ETF trading and accounting', () => {
     expect(s.market.recentEvents.some((e) => e.kind === 'etf-sold' && e.industry === 'realEstate')).toBe(true);
   });
 
+  test('players can trade ETF shares before rolling on their turn', () => {
+    let s = newGame();
+    expect(s.phase).toBe('awaiting-roll');
+
+    s = mustApply(s, 'a', { type: 'buy-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(player(s, 'a').cash).toBe(1397);
+    expect(s.portfolios.a!['CAN-FIN']).toBe(1);
+    expect(s.phase).toBe('awaiting-roll');
+
+    s = mustApply(s, 'a', { type: 'sell-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(player(s, 'a').cash).toBe(1494);
+    expect(s.portfolios.a!['CAN-FIN']).toBe(0);
+    expect(s.phase).toBe('awaiting-roll');
+  });
+
   test('forced ETF sales in debt phase apply the fire-sale haircut and settle debt atomically', () => {
     let s = newGame();
     player(s, 'a').cash = 0;
