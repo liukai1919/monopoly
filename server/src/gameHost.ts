@@ -22,7 +22,13 @@ export function applyPlayerAction(
   io: Server, room: Room, playerId: string, action: Action,
 ): string | null {
   if (!room.game) return '游戏尚未开始';
-  const result = applyAction(room.game, playerId, action);
+  let result;
+  try {
+    result = applyAction(room.game, playerId, action);
+  } catch (error) {
+    console.warn(`[${room.code}] invalid action from ${playerId}`, action, error);
+    return '无效动作';
+  }
   if (!result.ok) return result.error;
   room.game = result.state;
   touch(room);

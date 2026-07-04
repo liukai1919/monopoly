@@ -3,6 +3,7 @@ import {
   BOARD, CHANCE_CARDS, CHEST_CARDS, ETF_DEFINITIONS, applyAction, canBuild, computeRent, createGame,
   groupTiles, isOwnable,
 } from '../index';
+import { recordMarketEvent } from '../market';
 import type { Action, GameState, RNG, SeatInfo } from '../index';
 
 const SEATS: SeatInfo[] = [
@@ -404,6 +405,23 @@ describe('股票市场数据联动', () => {
     expect(events.every((e) => e.polarity === 'bullish')).toBe(true);
     expect(s.market.signals.logistics).toBeGreaterThan(0);
     expect(s.market.signals.tourism).toBeGreaterThan(0);
+  });
+
+  test('market event ids stay unique after trimming recent events', () => {
+    const s = newGame();
+    for (let i = 0; i < 20; i++) {
+      recordMarketEvent(s, {
+        kind: 'etf-bought',
+        polarity: 'bullish',
+        playerId: 'a',
+        amount: 100 + i,
+        industries: ['realEstate'],
+      });
+    }
+    const ids = s.market.recentEvents.map((e) => e.id);
+    expect(s.market.recentEvents).toHaveLength(16);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(s.market.nextEventId).toBe(21);
   });
 
   test('高额租金推动地块产业, 抵押压制金融', () => {

@@ -175,6 +175,7 @@ export interface MarketState {
   activityThisTurn: IndustryScoreMap;
   sentimentThisTurn: IndustryScoreMap;
   totalActivityThisTurn: number;
+  nextEventId: number;
   recentEvents: MarketEvent[];
 }
 

@@ -83,6 +83,7 @@ export function createMarket(): MarketState {
     activityThisTurn: emptyIndustryScores(),
     sentimentThisTurn: emptyIndustryScores(),
     totalActivityThisTurn: 0,
+    nextEventId: 1,
     recentEvents: [],
   };
 }
@@ -134,7 +135,9 @@ function toMarketEvent(
   const tile = input.tileId != null ? BOARD[input.tileId] : undefined;
   const player = input.playerId ? s.players.find((p) => p.id === input.playerId) : undefined;
   const affected = input.affectedPlayerId ? s.players.find((p) => p.id === input.affectedPlayerId) : undefined;
-  const id = `m-${s.turnCount}-${s.market.recentEvents.length + 1}`;
+  const eventId = s.market.nextEventId ?? s.market.recentEvents.length + 1;
+  s.market.nextEventId = eventId + 1;
+  const id = `m-${eventId}`;
   const context = {
     industry: INDUSTRY_NAMES[industry],
     city: tile?.name ?? '市场',
