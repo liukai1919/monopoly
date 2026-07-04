@@ -28,7 +28,7 @@ function tileIcon(tile: Tile): string {
   return TILE_ICONS[tile.type] ?? '';
 }
 
-export default function BoardGrid({ game, positions, children }: {
+export default function BoardGrid({ game, positions, rollingPlayerId, diceRolling, children }: {
   game: GameState;
   positions: Record<string, number>;
   rollingPlayerId?: string | null;
@@ -52,7 +52,7 @@ export default function BoardGrid({ game, positions, children }: {
   );
 }
 
-function TileView({ tile, game, positions }: {
+function TileView({ tile, game, positions, rollingPlayerId, diceRolling }: {
   tile: Tile;
   game: GameState;
   positions: Record<string, number>;
