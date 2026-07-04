@@ -3,16 +3,27 @@ import { QRCodeSVG } from 'qrcode.react';
 import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
 import type { GameState } from '@monopoly/shared';
 
-export default function Sidebar({ game, code, joinUrl }: {
+export interface CashFloatItem { id: number; playerId: string; delta: number; }
+
+export default function Sidebar({ game, code, joinUrl, displayCash, cashFloats }: {
   game: GameState;
   code: string;
   joinUrl: string;
+  /** 动画中的现金数字 (与事件泵同步); 缺省时直接显示状态值 */
+  displayCash?: Record<string, number>;
+  cashFloats?: CashFloatItem[];
 }) {
   return (
     <div className="sidebar">
       <div className="sidebar-players">
         {game.players.map((p) => (
-          <PlayerCard key={p.id} game={game} playerId={p.id} />
+          <PlayerCard
+            key={p.id}
+            game={game}
+            playerId={p.id}
+            shownCash={displayCash?.[p.id]}
+            floats={cashFloats?.filter((f) => f.playerId === p.id) ?? []}
+          />
         ))}
       </div>
       <LogPanel game={game} />
@@ -27,7 +38,12 @@ export default function Sidebar({ game, code, joinUrl }: {
   );
 }
 
-function PlayerCard({ game, playerId }: { game: GameState; playerId: string }) {
+function PlayerCard({ game, playerId, shownCash, floats }: {
+  game: GameState;
+  playerId: string;
+  shownCash?: number;
+  floats: CashFloatItem[];
+}) {
   const p = game.players.find((x) => x.id === playerId)!;
   const token = getPlayerToken(p.tokenId);
   const isCurrent = game.currentPlayer === p.id && game.phase !== 'game-over';
@@ -51,7 +67,14 @@ function PlayerCard({ game, playerId }: { game: GameState; playerId: string }) {
         {p.bankrupt && <span className="tag tag-dead">破产</span>}
         {p.jailCards.length > 0 && <span className="tag">🎫×{p.jailCards.length}</span>}
       </div>
-      <div className="player-card-cash">${p.cash}</div>
+      <div className="player-card-cash">
+        ${shownCash ?? p.cash}
+        {floats.map((f) => (
+          <span key={f.id} className={`cash-float ${f.delta >= 0 ? 'cash-float-up' : 'cash-float-down'}`}>
+            {f.delta >= 0 ? '+' : '-'}${Math.abs(f.delta)}
+          </span>
+        ))}
+      </div>
       <div className="player-card-props">
         {props.map((id) => {
           const tile = BOARD[id]!;

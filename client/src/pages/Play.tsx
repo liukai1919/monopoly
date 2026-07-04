@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { PLAYER_TOKENS, getPlayerToken, getTile } from '@monopoly/shared';
-import type { Action, PlayerToken } from '@monopoly/shared';
+import { PLAYER_TOKENS, getPlayerToken, getTile, whoMustAct } from '@monopoly/shared';
+import type { Action, GameEvent, GameState, PlayerToken } from '@monopoly/shared';
 import { emitAck, myPlayerId, sendAction, socket, useRoom } from '../api';
 import ActionPanel from '../play/ActionPanel';
 import AssetsPanel from '../play/AssetsPanel';
@@ -11,7 +11,7 @@ import TradePanel from '../play/TradePanel';
 
 export default function Play() {
   const { code = '' } = useParams();
-  const { room } = useRoom();
+  const { room, eventsSeq } = useRoom();
   const pid = myPlayerId();
   const [name, setName] = useState(localStorage.getItem('monopoly-name') ?? '');
   const [tokenId, setTokenId] = useState(localStorage.getItem('monopoly-token') ?? 'maple-beaver');
@@ -19,6 +19,7 @@ export default function Play() {
   const [joinError, setJoinError] = useState('');
   const [tab, setTab] = useState<'action' | 'assets' | 'market' | 'trade' | 'guide'>('action');
   const [toast, setToast] = useState('');
+  const [cashFlash, setCashFlash] = useState<{ id: number; delta: number } | null>(null);
   const joinedRef = useRef(false);
 
   const showToast = useCallback((msg: string) => {
@@ -62,6 +63,22 @@ export default function Play() {
     const err = await sendAction(code, action);
     if (err) showToast(err);
   }, [code, showToast]);
+
+  usePhoneHaptics(room?.game ?? null, room?.events ?? [], eventsSeq, pid, joined);
+
+  useEffect(() => {
+    if (!joined || !room?.events.length) return;
+    let delta = 0;
+    for (const event of room.events) {
+      if (event.type !== 'cash') continue;
+      if (event.to === pid) delta += event.amount;
+      if (event.from === pid) delta -= event.amount;
+    }
+    if (delta === 0) return;
+    setCashFlash({ id: eventsSeq, delta });
+    const timer = window.setTimeout(() => setCashFlash(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [eventsSeq, joined, pid, room?.events]);
 
   if (!joined) {
     return (
@@ -168,9 +185,73 @@ export default function Play() {
         <button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>📖 讲解</button>
       </nav>
 
+      {cashFlash && (
+        <div
+          key={cashFlash.id}
+          className={`phone-cash-flash ${cashFlash.delta > 0 ? 'phone-cash-flash-up' : 'phone-cash-flash-down'}`}
+        >
+          <span>{cashFlash.delta > 0 ? '+' : '-'}${Math.abs(cashFlash.delta)}</span>
+        </div>
+      )}
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
+}
+
+function usePhoneHaptics(
+  game: GameState | null,
+  events: GameEvent[],
+  eventsSeq: number,
+  playerId: string,
+  enabled: boolean,
+) {
+  const actionKeyRef = useRef('');
+  const eventsSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || !game) return;
+    const actors = new Set(whoMustAct(game));
+    if (game.trade) actors.add(game.trade.to);
+    const mustAct = actors.has(playerId);
+    if (!mustAct) {
+      actionKeyRef.current = '';
+      return;
+    }
+
+    const actionKey = [
+      game.turn,
+      game.phase,
+      game.currentPlayer,
+      game.auction?.turn ?? '',
+      game.pendingCard?.playerId ?? '',
+      game.debts[0]?.debtor ?? '',
+      game.trade?.to ?? '',
+    ].join(':');
+    if (actionKey === actionKeyRef.current) return;
+    actionKeyRef.current = actionKey;
+
+    if (game.phase === 'auction' && game.auction?.turn === playerId) {
+      vibrate([45, 40, 45]);
+    } else {
+      vibrate(55);
+    }
+  }, [enabled, game, playerId]);
+
+  useEffect(() => {
+    if (!enabled || eventsSeq === eventsSeqRef.current) return;
+    eventsSeqRef.current = eventsSeq;
+    const paidAnotherPlayer = events.some(
+      (event) => event.type === 'cash' && event.from === playerId && !!event.to && event.to !== playerId,
+    );
+    if (paidAnotherPlayer) vibrate([70, 35, 100]);
+  }, [enabled, events, eventsSeq, playerId]);
+}
+
+function vibrate(pattern: number | number[]) {
+  if (typeof navigator === 'undefined') return;
+  const maybeVibrate = (navigator as Navigator & { vibrate?: (value: number | number[]) => boolean }).vibrate;
+  if (maybeVibrate) maybeVibrate.call(navigator, pattern);
 }
 
 function TokenPicker({ selectedId, onSelect }: {

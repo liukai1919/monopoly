@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ETF_DEFINITIONS, getTile } from '@monopoly/shared';
+import type { CSSProperties } from 'react';
+import { ETF_DEFINITIONS, getPlayerToken, getTile } from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameState } from '@monopoly/shared';
 import { socket } from '../api';
 
-const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const DICE_PIPS: Record<number, number[]> = {
   1: [5],
   2: [1, 9],
@@ -11,6 +11,14 @@ const DICE_PIPS: Record<number, number[]> = {
   4: [1, 3, 7, 9],
   5: [1, 3, 5, 7, 9],
   6: [1, 3, 4, 6, 7, 9],
+};
+const DIE_ORIENTATION: Record<number, { rx: string; ry: string }> = {
+  1: { rx: '0deg', ry: '0deg' },
+  2: { rx: '0deg', ry: '-90deg' },
+  3: { rx: '-90deg', ry: '0deg' },
+  4: { rx: '90deg', ry: '0deg' },
+  5: { rx: '0deg', ry: '90deg' },
+  6: { rx: '0deg', ry: '180deg' },
 };
 
 export default function CenterStage({ game, code, shownDice, diceRolling, rollingPlayerId, cardFlash }: {
@@ -27,6 +35,7 @@ export default function CenterStage({ game, code, shownDice, diceRolling, rollin
 
   return (
     <div className="stage">
+      <CanadaAmbience />
       <div className="stage-brand">🍁 大富翁 · 加拿大版 <span className="stage-code">房间 {code}</span></div>
       <MarketTape game={game} />
 
@@ -40,11 +49,11 @@ export default function CenterStage({ game, code, shownDice, diceRolling, rollin
 
       <div className={`stage-dice dice-style-${diceStyle} ${diceRolling ? 'rolling' : ''}`}>
         {diceRolling ? (
-          <><DieFace style={diceStyle} rolling /><DieFace style={diceStyle} rolling /></>
+          <><DieFace style={diceStyle} rolling spin={0} /><DieFace style={diceStyle} rolling spin={1} /></>
         ) : shownDice ? (
           <>
-            <DieFace style={diceStyle} value={shownDice[0]} />
-            <DieFace style={diceStyle} value={shownDice[1]} />
+            <DieFace style={diceStyle} value={shownDice[0]} spin={0} />
+            <DieFace style={diceStyle} value={shownDice[1]} spin={1} />
           </>
         ) : (
           <span className="stage-dice-empty">等待掷骰…</span>
@@ -75,6 +84,24 @@ export default function CenterStage({ game, code, shownDice, diceRolling, rollin
       )}
 
       {game.phase === 'game-over' && <WinnerOverlay game={game} code={code} />}
+    </div>
+  );
+}
+
+function CanadaAmbience() {
+  return (
+    <div className="canada-ambience" aria-hidden="true">
+      {Array.from({ length: 18 }, (_, i) => (
+        <i
+          key={i}
+          style={{
+            '--x': `${(i * 37) % 100}%`,
+            '--delay': `${-(i * 0.72).toFixed(2)}s`,
+            '--dur': `${8 + (i % 6) * 1.2}s`,
+            '--size': `${3 + (i % 4)}px`,
+          } as CSSProperties}
+        />
+      ))}
     </div>
   );
 }
@@ -115,21 +142,34 @@ function formatCents(cents: number): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-function DieFace({ style, value, rolling = false }: { style: DiceStyle; value?: number; rolling?: boolean }) {
-  if (rolling || !value) {
-    return <span className="die die-rolling">{style === 'classic' ? '🎲' : '?'}</span>;
-  }
-  if (style === 'classic') return <span className="die die-classic">{DICE_FACES[value - 1]}</span>;
-
-  const pips = DICE_PIPS[value] ?? [];
+function DieFace({
+  style, value = 1, rolling = false, spin = 0,
+}: { style: DiceStyle; value?: number; rolling?: boolean; spin?: number }) {
+  const orientation = rolling ? DIE_ORIENTATION[1] : DIE_ORIENTATION[value] ?? DIE_ORIENTATION[1];
+  const cubeStyle = {
+    '--rx': orientation.rx,
+    '--ry': orientation.ry,
+    '--spin-x': `${720 + spin * 180}deg`,
+    '--spin-y': `${540 + spin * 240}deg`,
+  } as CSSProperties;
   return (
-    <span className={`die die-box die-${style}`} aria-label={`${value} 点`}>
-      <span className="die-pip-grid">
-        {Array.from({ length: 9 }, (_, i) => (
-          <span key={i} className={pips.includes(i + 1) ? 'die-pip on' : 'die-pip'} />
+    <span
+      className={`die die-cube die-cube-${style} ${rolling ? 'die-cube-rolling' : 'die-cube-settled'}`}
+      style={cubeStyle}
+      aria-label={rolling ? '骰子滚动中' : `${value} 点`}
+    >
+      <span className="die-cube-inner">
+        {[1, 2, 3, 4, 5, 6].map((face) => (
+          <span key={face} className={`die-cube-face die-cube-face-${face}`}>
+            <span className="die-pip-grid">
+              {Array.from({ length: 9 }, (_, i) => (
+                <span key={i} className={(DICE_PIPS[face] ?? []).includes(i + 1) ? 'die-pip on' : 'die-pip'} />
+              ))}
+            </span>
+            {style === 'maple' && face === 1 && <span className="die-maple-mark">🍁</span>}
+          </span>
         ))}
       </span>
-      {style === 'maple' && <span className="die-maple-mark">🍁</span>}
     </span>
   );
 }
@@ -226,13 +266,37 @@ function AuctionPanel({ game }: { game: GameState }) {
 
 function WinnerOverlay({ game, code }: { game: GameState; code: string }) {
   const winner = game.players.find((p) => p.id === game.winner);
+  const token = getPlayerToken(winner?.tokenId);
   return (
     <div className="winner-overlay">
+      <Confetti />
       <div className="winner-emoji">{winner?.emoji}</div>
       <h2>🏆 {winner?.name} 获胜!</h2>
+      {token && <div className="winner-token">{token.name} · {token.subtitle}</div>}
       <button className="btn btn-primary btn-xl" onClick={() => socket.emit('lobby:reset', { code })}>
         🔁 再来一局
       </button>
+    </div>
+  );
+}
+
+function Confetti() {
+  return (
+    <div className="confetti" aria-hidden="true">
+      {Array.from({ length: 46 }, (_, i) => (
+        <i
+          key={i}
+          className={i % 7 === 0 ? 'confetti-leaf' : ''}
+          style={{
+            '--x': `${(i * 29) % 100}%`,
+            '--delay': `${-(i * 0.13).toFixed(2)}s`,
+            '--dur': `${2.8 + (i % 5) * 0.28}s`,
+            '--hue': `${(i * 47) % 360}`,
+          } as CSSProperties}
+        >
+          {i % 7 === 0 ? '🍁' : ''}
+        </i>
+      ))}
     </div>
   );
 }

@@ -241,6 +241,11 @@ export type GameEvent =
   | { type: 'dice'; playerId: string; dice: [number, number] }
   | { type: 'move'; playerId: string; path: number[]; teleport?: boolean }
   | { type: 'card'; deck: 'chance' | 'chest'; text: string; playerId: string }
+  /** 一笔现金转移; from/to 为 null 表示银行(含奖池) */
+  | { type: 'cash'; from: string | null; to: string | null; amount: number; tileId?: number }
+  | { type: 'bankrupt'; playerId: string; creditorId: string | null }
+  /** playerId 刚集齐 group 色组 */
+  | { type: 'monopoly'; playerId: string; group: ColorGroup }
   | { type: 'game-over'; winner: string };
 
 export type RNG = () => number;

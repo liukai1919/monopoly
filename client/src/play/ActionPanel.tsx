@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { JAIL_FINE, getTile, isOwnable, liquidationValue } from '@monopoly/shared';
 import type { Action, GameState, TradeSide } from '@monopoly/shared';
 
@@ -11,6 +12,11 @@ interface Props {
 export default function ActionPanel({ game, meId, act }: Props) {
   const me = game.players.find((p) => p.id === meId)!;
   const isMyTurn = game.currentPlayer === meId;
+  const shakeRoll = useShakeToRoll(game.phase === 'awaiting-roll' && isMyTurn, () => act({ type: 'roll' }));
+  const roll = useCallback(async () => {
+    await shakeRoll.requestAccess();
+    act({ type: 'roll' });
+  }, [act, shakeRoll]);
 
   if (me.bankrupt) return <div className="panel-note">💀 你已破产出局, 泡杯茶看戏吧</div>;
 
@@ -39,12 +45,15 @@ export default function ActionPanel({ game, meId, act }: Props) {
       {game.phase === 'awaiting-card' && <CardDrawSection game={game} meId={meId} act={act} />}
 
       {game.phase === 'awaiting-roll' && isMyTurn && (
-        me.inJail ? <JailOptions game={game} meId={meId} act={act} /> : (
+        me.inJail ? <JailOptions game={game} meId={meId} act={act} onRoll={roll} /> : (
           <div className="panel-center">
             {game.doublesCount > 0 && <div className="panel-badge">🎉 双数! 再掷一次</div>}
-            <button className="btn btn-roll" onClick={() => act({ type: 'roll' })}>
+            <button className="btn btn-roll" onClick={() => void roll()}>
               🎲<br />掷骰子
             </button>
+            <div className={`shake-status shake-status-${shakeRoll.status}`}>
+              {shakeRoll.status === 'ready' ? '摇一摇已就绪' : '点一次后可摇一摇'}
+            </div>
             <p className="home-hint">掷骰前也可以先去「资产」盖房 / 赎回</p>
           </div>
         )
@@ -80,6 +89,28 @@ function CardDrawSection({ game, meId, act }: Props) {
   const tile = getTile(pending.tileId);
   const deckName = pending.deck === 'chance' ? '机会' : '宝箱';
   const isMine = pending.playerId === meId;
+  const [dragY, setDragY] = useState(0);
+  const [drawing, setDrawing] = useState(false);
+  const startYRef = useRef<number | null>(null);
+  const dragYRef = useRef(0);
+  const draggedRef = useRef(false);
+  const cardKey = `${pending.playerId}:${pending.deck}:${pending.tileId}`;
+
+  useEffect(() => {
+    setDragY(0);
+    dragYRef.current = 0;
+    setDrawing(false);
+    startYRef.current = null;
+    draggedRef.current = false;
+  }, [cardKey]);
+
+  const draw = useCallback(() => {
+    if (drawing) return;
+    setDrawing(true);
+    dragYRef.current = -150;
+    setDragY(-150);
+    window.setTimeout(() => act({ type: 'draw-card' }), 260);
+  }, [act, drawing]);
 
   if (!isMine) {
     return (
@@ -95,22 +126,65 @@ function CardDrawSection({ game, meId, act }: Props) {
       <div className="card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}卡</div>
       <div className="panel-card-title">你来到了 {tile.name}</div>
       <p className="home-hint">{tile.instruction}</p>
-      <button className="btn btn-primary btn-xl card-draw-btn" onClick={() => act({ type: 'draw-card' })}>
-        亲手抽一张
-      </button>
+      <div className={`phone-card-reveal phone-card-reveal-${pending.deck} ${drawing ? 'revealing' : ''}`}>
+        <div className="phone-card-slot" aria-hidden="true" />
+        <button
+          type="button"
+          className="phone-card-back"
+          style={{
+            '--drag-y': `${dragY}px`,
+            '--tilt': `${Math.max(-12, dragY / 10)}deg`,
+          } as CSSProperties}
+          onPointerDown={(event) => {
+            if (drawing) return;
+            startYRef.current = event.clientY;
+            draggedRef.current = false;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (drawing || startYRef.current == null) return;
+            const next = Math.min(0, event.clientY - startYRef.current);
+            if (Math.abs(next) > 6) draggedRef.current = true;
+            const clamped = Math.max(-170, next);
+            dragYRef.current = clamped;
+            setDragY(clamped);
+          }}
+          onPointerUp={() => {
+            if (drawing) return;
+            if (dragYRef.current <= -58) draw();
+            else {
+              dragYRef.current = 0;
+              setDragY(0);
+            }
+            startYRef.current = null;
+          }}
+          onPointerCancel={() => {
+            startYRef.current = null;
+            dragYRef.current = 0;
+            setDragY(0);
+          }}
+          onClick={() => {
+            if (!draggedRef.current) draw();
+          }}
+        >
+          <span className="phone-card-back-icon">{pending.deck === 'chance' ? '❓' : '🎁'}</span>
+          <span className="phone-card-back-title">{deckName}卡</span>
+          <span className="phone-card-back-hint">划开翻牌</span>
+        </button>
+      </div>
     </div>
   );
 }
 
 // ---------------- 监狱 ----------------
 
-function JailOptions({ game, meId, act }: Props) {
+function JailOptions({ game, meId, act, onRoll }: Props & { onRoll: () => void }) {
   const me = game.players.find((p) => p.id === meId)!;
   return (
     <div className="panel-card">
       <div className="panel-card-title">🚔 你在监狱里 (第 {me.jailTurns + 1}/3 回合)</div>
       <div className="btn-stack">
-        <button className="btn btn-primary" onClick={() => act({ type: 'roll' })}>
+        <button className="btn btn-primary" onClick={onRoll}>
           🎲 掷骰子碰运气 (双数出狱)
         </button>
         <button
@@ -128,6 +202,90 @@ function JailOptions({ game, meId, act }: Props) {
       </div>
     </div>
   );
+}
+
+type MotionPermission = 'unknown' | 'needs-permission' | 'ready' | 'blocked' | 'unsupported';
+type DeviceMotionEventWithPermission = typeof DeviceMotionEvent & {
+  requestPermission?: () => Promise<'granted' | 'denied'>;
+};
+
+function useShakeToRoll(enabled: boolean, onRoll: () => void) {
+  const [status, setStatus] = useState<MotionPermission>('unknown');
+  const enabledRef = useRef(enabled);
+  const onRollRef = useRef(onRoll);
+  const lockedRef = useRef(false);
+  const lastMagnitudeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+    if (!enabled) lockedRef.current = false;
+  }, [enabled]);
+
+  useEffect(() => {
+    onRollRef.current = onRoll;
+  }, [onRoll]);
+
+  const requestAccess = useCallback(async () => {
+    if (typeof window === 'undefined' || !('DeviceMotionEvent' in window)) {
+      setStatus('unsupported');
+      return false;
+    }
+    const motion = window.DeviceMotionEvent as DeviceMotionEventWithPermission;
+    if (typeof motion.requestPermission === 'function') {
+      try {
+        const result = await motion.requestPermission();
+        if (result !== 'granted') {
+          setStatus('blocked');
+          return false;
+        }
+      } catch {
+        setStatus('blocked');
+        return false;
+      }
+    }
+    setStatus('ready');
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window === 'undefined' || !('DeviceMotionEvent' in window)) {
+      setStatus('unsupported');
+      return;
+    }
+
+    const motion = window.DeviceMotionEvent as DeviceMotionEventWithPermission;
+    if (typeof motion.requestPermission === 'function' && status !== 'ready') {
+      if (status === 'unknown') setStatus('needs-permission');
+      return;
+    }
+    if (status !== 'ready') setStatus('ready');
+
+    const onMotion = (event: DeviceMotionEvent) => {
+      if (!enabledRef.current || lockedRef.current) return;
+      const acc = event.accelerationIncludingGravity ?? event.acceleration;
+      if (!acc) return;
+      const x = acc.x ?? 0;
+      const y = acc.y ?? 0;
+      const z = acc.z ?? 0;
+      const magnitude = Math.sqrt(x * x + y * y + z * z);
+      const last = lastMagnitudeRef.current ?? magnitude;
+      lastMagnitudeRef.current = magnitude;
+      const impulse = Math.abs(magnitude - last);
+      if (magnitude < 23 && impulse < 13) return;
+
+      lockedRef.current = true;
+      onRollRef.current();
+      window.setTimeout(() => {
+        lockedRef.current = false;
+      }, 1700);
+    };
+
+    window.addEventListener('devicemotion', onMotion);
+    return () => window.removeEventListener('devicemotion', onMotion);
+  }, [enabled, status]);
+
+  return { requestAccess, status };
 }
 
 // ---------------- 购买决定 ----------------

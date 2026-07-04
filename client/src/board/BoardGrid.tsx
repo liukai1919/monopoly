@@ -1,6 +1,14 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
 import type { GameState, Tile } from '@monopoly/shared';
+
+/** 一笔正在飞行的钱; fromTile/toTile 为 null 表示银行(棋盘中央) */
+export interface MoneyFxItem {
+  id: number;
+  fromTile: number | null;
+  toTile: number | null;
+  amount: number;
+}
 
 /** 40 格在 11×11 网格中的位置 (1-indexed) */
 function tileGridPos(id: number): { row: number; col: number } {
@@ -28,11 +36,15 @@ function tileIcon(tile: Tile): string {
   return TILE_ICONS[tile.type] ?? '';
 }
 
-export default function BoardGrid({ game, positions, rollingPlayerId, diceRolling, children }: {
+export default function BoardGrid({
+  game, positions, rollingPlayerId, diceRolling, moneyFx, landedFx, children,
+}: {
   game: GameState;
   positions: Record<string, number>;
   rollingPlayerId?: string | null;
   diceRolling?: boolean;
+  moneyFx?: MoneyFxItem[];
+  landedFx?: { tile: number; id: number } | null;
   children?: ReactNode;
 }) {
   return (
@@ -45,19 +57,58 @@ export default function BoardGrid({ game, positions, rollingPlayerId, diceRollin
           positions={positions}
           rollingPlayerId={rollingPlayerId}
           diceRolling={diceRolling}
+          landedId={landedFx?.tile === tile.id ? landedFx.id : null}
         />
       ))}
       <div className="board-center">{children}</div>
+      {moneyFx && moneyFx.length > 0 && (
+        <div className="board-fx-layer">
+          {moneyFx.map((fx) => <MoneyFly key={fx.id} fx={fx} />)}
+        </div>
+      )}
     </div>
   );
 }
 
-function TileView({ tile, game, positions, rollingPlayerId, diceRolling }: {
+/** 网格轴心位置: 角格 1.5fr, 中间 9 格各 1fr, 总宽 12fr */
+function axisCenterPct(i: number): number {
+  if (i === 1) return (0.75 / 12) * 100;
+  if (i === 11) return (11.25 / 12) * 100;
+  return (i / 12) * 100;
+}
+
+function tileCenterPct(tileId: number | null): { x: number; y: number } {
+  if (tileId == null) return { x: 50, y: 50 }; // 银行 = 棋盘中央
+  const { row, col } = tileGridPos(tileId);
+  return { x: axisCenterPct(col), y: axisCenterPct(row) };
+}
+
+function MoneyFly({ fx }: { fx: MoneyFxItem }) {
+  const from = tileCenterPct(fx.fromTile);
+  const to = tileCenterPct(fx.toTile);
+  const style = {
+    '--fx': `${from.x}%`,
+    '--fy': `${from.y}%`,
+    '--tx': `${to.x}%`,
+    '--ty': `${to.y}%`,
+  } as CSSProperties;
+  return (
+    <div className="money-fly" style={style}>
+      <span className="money-bill">💵</span>
+      <span className="money-bill" style={{ animationDelay: '110ms' }}>💵</span>
+      <span className="money-bill" style={{ animationDelay: '220ms' }}>💵</span>
+      <span className="money-amount">${fx.amount}</span>
+    </div>
+  );
+}
+
+function TileView({ tile, game, positions, rollingPlayerId, diceRolling, landedId }: {
   tile: Tile;
   game: GameState;
   positions: Record<string, number>;
   rollingPlayerId?: string | null;
   diceRolling?: boolean;
+  landedId?: number | null;
 }) {
   const { row, col } = tileGridPos(tile.id);
   const side = tileSide(tile.id);
@@ -77,6 +128,7 @@ function TileView({ tile, game, positions, rollingPlayerId, diceRolling }: {
         ...(owner ? { boxShadow: `inset 0 0 0 3px ${owner.color}` } : {}),
       }}
     >
+      {landedId != null && <span key={landedId} className="tile-land-pulse" aria-hidden="true" />}
       {tile.type === 'property' && (
         <div className="tile-bar" style={{ background: GROUP_COLORS[tile.group] }}>
           {own && own.houses > 0 && (

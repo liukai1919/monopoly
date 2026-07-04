@@ -565,6 +565,59 @@ describe('房规与结算', () => {
   });
 });
 
+describe('动画事件流 (cash / monopoly / bankrupt)', () => {
+  test('付租金广播 cash 事件, 带双方与地块', () => {
+    const s = newGame();
+    s.ownership[6]!.owner = 'b';
+    player(s, 'a').position = 4;
+    const r = applyAction(s, 'a', { type: 'roll' }, diceRng(1, 1)); // → 6 蒙克顿
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'cash', from: 'a', to: 'b', amount: 6, tileId: 6 });
+  });
+
+  test('经过起点的薪水广播银行入账事件', () => {
+    const s = newGame();
+    player(s, 'a').position = 38;
+    const r = applyAction(s, 'a', { type: 'roll' }, diceRng(1, 2)); // 38 → 1
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'cash', from: null, to: 'a', amount: 200, tileId: 0 });
+  });
+
+  test('买地扣款, 集齐色组时广播垄断事件', () => {
+    let s = newGame();
+    s.ownership[1]!.owner = 'a';
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // 0 → 3 夏洛特敦
+    const r = applyAction(s, 'a', { type: 'buy' });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'cash', from: 'a', to: null, amount: 60, tileId: 3 });
+    expect(r.events).toContainEqual({ type: 'monopoly', playerId: 'a', group: 'brown' });
+  });
+
+  test('破产广播 bankrupt 事件, 现金移交也事件化', () => {
+    const s = newGame();
+    player(s, 'a').cash = 50;
+    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: '测试' });
+    s.phase = 'awaiting-debt';
+    const r = applyAction(s, 'a', { type: 'declare-bankruptcy' });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'bankrupt', playerId: 'a', creditorId: 'b' });
+    expect(r.events).toContainEqual({ type: 'cash', from: 'a', to: 'b', amount: 50 });
+  });
+
+  test('交易中的现金广播 cash 事件', () => {
+    let s = newGame();
+    s.ownership[5]!.owner = 'b';
+    s = mustApply(s, 'a', {
+      type: 'propose-trade', to: 'b',
+      give: { cash: 100, properties: [], jailCards: 0 },
+      get: { cash: 0, properties: [5], jailCards: 0 },
+    });
+    const r = applyAction(s, 'b', { type: 'respond-trade', accept: true });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'cash', from: 'a', to: 'b', amount: 100 });
+  });
+});
+
 describe('数据完整性', () => {
   test('每个可购地块都有所有权记录', () => {
     const s = newGame();
