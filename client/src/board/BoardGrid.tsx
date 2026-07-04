@@ -31,12 +31,21 @@ function tileIcon(tile: Tile): string {
 export default function BoardGrid({ game, positions, children }: {
   game: GameState;
   positions: Record<string, number>;
+  rollingPlayerId?: string | null;
+  diceRolling?: boolean;
   children?: ReactNode;
 }) {
   return (
     <div className="board-grid">
       {BOARD.map((tile) => (
-        <TileView key={tile.id} tile={tile} game={game} positions={positions} />
+        <TileView
+          key={tile.id}
+          tile={tile}
+          game={game}
+          positions={positions}
+          rollingPlayerId={rollingPlayerId}
+          diceRolling={diceRolling}
+        />
       ))}
       <div className="board-center">{children}</div>
     </div>
@@ -47,6 +56,8 @@ function TileView({ tile, game, positions }: {
   tile: Tile;
   game: GameState;
   positions: Record<string, number>;
+  rollingPlayerId?: string | null;
+  diceRolling?: boolean;
 }) {
   const { row, col } = tileGridPos(tile.id);
   const side = tileSide(tile.id);
@@ -86,14 +97,21 @@ function TileView({ tile, game, positions }: {
         <div className="tile-tokens">
           {tokens.map((p) => {
             const token = getPlayerToken(p.tokenId);
+            const isRolling = diceRolling && p.id === rollingPlayerId;
             return (
               <span
                 key={`${p.id}-${positions[p.id] ?? p.position}`}
-                className="token"
+                className={`token ${isRolling ? 'token-rolling' : ''}`}
                 style={{ borderColor: p.color, background: `${p.color}33` }}
                 title={`${p.name}${token ? ` - ${token.name}` : ''}`}
               >
                 {p.emoji}
+                {isRolling && (
+                  <span className="token-roll-burst" aria-hidden="true">
+                    <i>🎲</i>
+                    <i>🎲</i>
+                  </span>
+                )}
               </span>
             );
           })}

@@ -283,6 +283,7 @@ b { font-weight: 700; }
   pointer-events: none;
 }
 .token {
+  position: relative;
   width: clamp(15px, 2.4vh, 27px);
   height: clamp(15px, 2.4vh, 27px);
   border-radius: 50%;
@@ -294,6 +295,46 @@ b { font-weight: 700; }
   font-size: clamp(9px, 1.5vh, 17px);
   animation: pop 0.22s;
   box-shadow: 0 2px 5px #0006;
+}
+.token-rolling {
+  z-index: 6;
+  animation: token-roll-shake 0.16s infinite alternate;
+  box-shadow: 0 0 0 3px #fff7, 0 0 18px #ffd166, 0 3px 8px #0008;
+}
+.token-roll-burst {
+  position: absolute;
+  inset: -18px;
+  pointer-events: none;
+}
+.token-roll-burst i {
+  position: absolute;
+  width: clamp(14px, 2.2vh, 24px);
+  height: clamp(14px, 2.2vh, 24px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #fffef8;
+  border: 1px solid #17332255;
+  font-style: normal;
+  font-size: clamp(10px, 1.5vh, 17px);
+  box-shadow: 0 4px 10px #0006;
+}
+.token-roll-burst i:first-child { animation: token-die-one 0.65s ease-in-out infinite; }
+.token-roll-burst i:last-child { animation: token-die-two 0.65s ease-in-out infinite; }
+@keyframes token-roll-shake {
+  from { transform: translateY(0) rotate(-8deg) scale(1.05); }
+  to { transform: translateY(-4px) rotate(8deg) scale(1.16); }
+}
+@keyframes token-die-one {
+  0% { left: 45%; top: 45%; transform: rotate(0deg) scale(0.6); opacity: 0.25; }
+  45% { left: 0; top: 4%; transform: rotate(170deg) scale(1); opacity: 1; }
+  100% { left: 42%; top: 44%; transform: rotate(340deg) scale(0.65); opacity: 0.35; }
+}
+@keyframes token-die-two {
+  0% { right: 45%; bottom: 45%; transform: rotate(0deg) scale(0.6); opacity: 0.25; }
+  45% { right: 0; bottom: 2%; transform: rotate(-165deg) scale(1); opacity: 1; }
+  100% { right: 42%; bottom: 44%; transform: rotate(-330deg) scale(0.65); opacity: 0.35; }
 }
 
 /* ---------------- 中央舞台 ---------------- */
@@ -431,6 +472,23 @@ b { font-weight: 700; }
   50% { transform: rotate(12deg) translateY(-6px); }
 }
 .stage-dice-empty { color: #4c6b55; font-size: clamp(12px, 1.8vh, 20px); }
+.stage-roll-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffffd9;
+  border: 2px solid;
+  border-radius: 999px;
+  padding: 5px 13px;
+  color: #173322;
+  font-size: clamp(12px, 1.7vh, 18px);
+  animation: roll-call-float 0.35s ease-out;
+  box-shadow: 0 8px 18px #0002;
+}
+@keyframes roll-call-float {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .stage-pot { font-size: clamp(12px, 1.8vh, 20px); background: #ffffffaa; border-radius: 10px; padding: 4px 12px; }
 
 .stage-banner {

@@ -13,14 +13,16 @@ const DICE_PIPS: Record<number, number[]> = {
   6: [1, 3, 4, 6, 7, 9],
 };
 
-export default function CenterStage({ game, code, shownDice, diceRolling, cardFlash }: {
+export default function CenterStage({ game, code, shownDice, diceRolling, rollingPlayerId, cardFlash }: {
   game: GameState;
   code: string;
   shownDice: [number, number] | null;
   diceRolling: boolean;
+  rollingPlayerId?: string | null;
   cardFlash: { deck: string; text: string } | null;
 }) {
   const current = game.players.find((p) => p.id === game.currentPlayer);
+  const rollingPlayer = rollingPlayerId ? game.players.find((p) => p.id === rollingPlayerId) : null;
   const diceStyle = game.settings.diceStyle ?? 'classic';
 
   return (
@@ -48,6 +50,13 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
           <span className="stage-dice-empty">等待掷骰…</span>
         )}
       </div>
+      {diceRolling && rollingPlayer && (
+        <div className="stage-roll-call" style={{ borderColor: rollingPlayer.color }}>
+          <span>{rollingPlayer.emoji}</span>
+          <b style={{ color: rollingPlayer.color }}>{rollingPlayer.name}</b>
+          <span>正在掷骰</span>
+        </div>
+      )}
 
       {game.settings.freeParkingPot && (
         <div className="stage-pot">🅿️ 停车奖池: <b>${game.pot}</b></div>

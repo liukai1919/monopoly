@@ -46,6 +46,7 @@ export default function Board() {
   const [positions, setPositions] = useState<Record<string, number>>({});
   const [shownDice, setShownDice] = useState<[number, number] | null>(null);
   const [diceRolling, setDiceRolling] = useState(false);
+  const [rollingPlayerId, setRollingPlayerId] = useState<string | null>(null);
   const [cardFlash, setCardFlash] = useState<{ deck: string; text: string } | null>(null);
   const queueRef = useRef<GameEvent[]>([]);
   const busyRef = useRef(false);
@@ -59,6 +60,7 @@ export default function Board() {
         queueRef.current.length = 0;
         setPositions(Object.fromEntries(room.game.players.map((p) => [p.id, p.position])));
         setShownDice(room.game.dice);
+        setRollingPlayerId(null);
         setCardFlash(null);
       }
       void pump();
@@ -76,11 +78,13 @@ export default function Board() {
     while (queueRef.current.length > 0) {
       const e = queueRef.current.shift()!;
       if (e.type === 'dice') {
+        setRollingPlayerId(e.playerId);
         setDiceRolling(true);
         await sleep(650);
         setDiceRolling(false);
         setShownDice(e.dice);
         await sleep(350);
+        setRollingPlayerId(null);
       } else if (e.type === 'move') {
         if (e.teleport) {
           await sleep(250);
@@ -124,12 +128,18 @@ export default function Board() {
   return (
     <div className="board-page">
       <div className="board-area">
-        <BoardGrid game={room.game} positions={positions}>
+        <BoardGrid
+          game={room.game}
+          positions={positions}
+          rollingPlayerId={rollingPlayerId}
+          diceRolling={diceRolling}
+        >
           <CenterStage
             game={room.game}
             code={code}
             shownDice={shownDice}
             diceRolling={diceRolling}
+            rollingPlayerId={rollingPlayerId}
             cardFlash={cardFlash}
           />
         </BoardGrid>
