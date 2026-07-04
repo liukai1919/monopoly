@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getTile } from '@monopoly/shared';
-import type { DiceStyle, GameState } from '@monopoly/shared';
+import { ETF_DEFINITIONS, getTile } from '@monopoly/shared';
+import type { DiceStyle, EtfId, GameState } from '@monopoly/shared';
 import { socket } from '../api';
 
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -26,6 +26,7 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
   return (
     <div className="stage">
       <div className="stage-brand">🍁 大富翁 · 加拿大版 <span className="stage-code">房间 {code}</span></div>
+      <MarketTape game={game} />
 
       {current && (
         <div className="stage-turn" style={{ borderColor: current.color }}>
@@ -67,6 +68,42 @@ export default function CenterStage({ game, code, shownDice, diceRolling, cardFl
       {game.phase === 'game-over' && <WinnerOverlay game={game} code={code} />}
     </div>
   );
+}
+
+function MarketTape({ game }: { game: GameState }) {
+  const movers = (Object.keys(game.market.etfs) as EtfId[])
+    .sort((a, b) => Math.abs(game.market.etfs[b].priceCents - game.market.etfs[b].lastPriceCents)
+      - Math.abs(game.market.etfs[a].priceCents - game.market.etfs[a].lastPriceCents))
+    .slice(0, 4);
+  const latest = game.market.recentEvents.at(-1);
+
+  return (
+    <div className="stage-market">
+      <div className="stage-market-row">
+        {movers.map((etfId) => {
+          const etf = game.market.etfs[etfId];
+          const delta = etf.priceCents - etf.lastPriceCents;
+          return (
+            <div className="stage-market-chip" key={etfId} title={ETF_DEFINITIONS[etfId].name}>
+              <span>{etfId.replace('CAN-', '')}</span>
+              <b>{formatCents(etf.priceCents)}</b>
+              <em className={delta >= 0 ? 'market-up' : 'market-down'}>
+                {delta >= 0 ? '+' : ''}{formatCents(delta)}
+              </em>
+            </div>
+          );
+        })}
+      </div>
+      <div className="stage-market-news">
+        {latest ? latest.headline : '财经频道待命：棋盘交易会推动行业 ETF 波动'}
+      </div>
+    </div>
+  );
+}
+
+function formatCents(cents: number): string {
+  const sign = cents < 0 ? '-' : '';
+  return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
 function DieFace({ style, value, rolling = false }: { style: DiceStyle; value?: number; rolling?: boolean }) {
