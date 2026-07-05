@@ -7,7 +7,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import { createGame } from '@monopoly/shared';
 import type { DiceStyle } from '@monopoly/shared';
-import { applyPlayerAction, broadcast } from './gameHost';
+import { applyPlayerAction, broadcast, settleRoomGame } from './gameHost';
 import {
   AI_EMOJIS, AI_NAMES, AI_TOKEN_IDS, PLAYER_COLORS, createRoom, getRoom, pickToken, sweepRooms, touch,
 } from './rooms';
@@ -228,6 +228,17 @@ io.on('connection', (socket) => {
     cb?.(error ? { error } : { ok: true });
   });
 
+
+  socket.on('game:settle', (
+    payload: { code?: string },
+    cb?: (res: { ok?: boolean; error?: string }) => void,
+  ) => {
+    const room = getRoom(payload?.code ?? data.code);
+    if (!room) return cb?.({ error: '\u623f\u95f4\u4e0d\u5b58\u5728\u6216\u5df2\u8fc7\u671f' });
+    if (data.role !== 'board') return cb?.({ error: '\u53ea\u6709\u5927\u5c4f\u53ef\u4ee5\u53d1\u8d77\u7ed3\u7b97' });
+    const error = settleRoomGame(io, room);
+    cb?.(error ? { error } : { ok: true });
+  });
   // ---- 断线: 只标记, 不移除, 等待重连 ----
   socket.on('disconnect', () => {
     const room = getRoom(data.code);

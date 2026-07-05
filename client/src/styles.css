@@ -1005,6 +1005,21 @@ b { font-weight: 700; }
 }
 .log-line:last-child { color: var(--text); }
 
+.sidebar-controls {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-controls .btn { width: 100%; }
+.sidebar-control-error {
+  color: #ff8f9e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .sidebar-footer {
   display: flex;
   gap: 10px;

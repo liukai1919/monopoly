@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
 import type { GameState } from '@monopoly/shared';
+import { emitAck } from '../api';
 
 export interface CashFloatItem { id: number; playerId: string; delta: number; }
 
@@ -27,6 +28,7 @@ export default function Sidebar({ game, code, joinUrl, displayCash, cashFloats }
         ))}
       </div>
       <LogPanel game={game} />
+      <SettlementControl game={game} code={code} />
       <div className="sidebar-footer">
         {joinUrl && <QRCodeSVG value={joinUrl} size={64} marginSize={1} />}
         <div>
@@ -34,6 +36,35 @@ export default function Sidebar({ game, code, joinUrl, displayCash, cashFloats }
           <div className="sidebar-url">{joinUrl}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SettlementControl({ game, code }: { game: GameState; code: string }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const disabled = pending || game.phase === 'game-over';
+
+  useEffect(() => {
+    setError('');
+  }, [game.phase, game.turnCount]);
+
+  async function settleNow() {
+    if (disabled) return;
+    if (!window.confirm('确定按净资产立即结算本局吗？')) return;
+    setPending(true);
+    setError('');
+    const res = await emitAck('game:settle', { code });
+    setPending(false);
+    if (res?.error) setError(res.error);
+  }
+
+  return (
+    <div className="sidebar-controls">
+      <button className="btn btn-danger" disabled={disabled} onClick={() => void settleNow()}>
+        {pending ? '结算中...' : '立即结算'}
+      </button>
+      {error && <div className="sidebar-control-error">{error}</div>}
     </div>
   );
 }

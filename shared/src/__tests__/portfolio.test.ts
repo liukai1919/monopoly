@@ -49,19 +49,37 @@ describe('ETF trading and accounting', () => {
     expect(s.market.recentEvents.some((e) => e.kind === 'etf-sold' && e.industry === 'realEstate')).toBe(true);
   });
 
-  test('players can trade ETF shares before rolling on their turn', () => {
+  test('players can trade ETF shares outside their own turn', () => {
     let s = newGame();
     expect(s.phase).toBe('awaiting-roll');
 
-    s = mustApply(s, 'a', { type: 'buy-etf', etfId: 'CAN-FIN', shares: 1 });
-    expect(player(s, 'a').cash).toBe(1397);
-    expect(s.portfolios.a!['CAN-FIN']).toBe(1);
+    s = mustApply(s, 'b', { type: 'buy-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(player(s, 'b').cash).toBe(1397);
+    expect(s.portfolios.b!['CAN-FIN']).toBe(1);
     expect(s.phase).toBe('awaiting-roll');
+    expect(s.currentPlayer).toBe('a');
 
-    s = mustApply(s, 'a', { type: 'sell-etf', etfId: 'CAN-FIN', shares: 1 });
-    expect(player(s, 'a').cash).toBe(1494);
-    expect(s.portfolios.a!['CAN-FIN']).toBe(0);
+    s = mustApply(s, 'b', { type: 'sell-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(player(s, 'b').cash).toBe(1494);
+    expect(s.portfolios.b!['CAN-FIN']).toBe(0);
     expect(s.phase).toBe('awaiting-roll');
+  });
+
+  test('only the debtor gets the ETF fire-sale haircut during debt phase', () => {
+    let s = newGame();
+    player(s, 'a').cash = 0;
+    s.portfolios.a!['CAN-REAL'] = 2;
+    s.portfolios.b!['CAN-FIN'] = 1;
+    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt' });
+    s.phase = 'awaiting-debt';
+
+    s = mustApply(s, 'b', { type: 'sell-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(player(s, 'b').cash).toBe(1597);
+    expect(s.market.recentEvents.at(-1)?.kind).toBe('etf-sold');
+    expect(s.phase).toBe('awaiting-debt');
+
+    const buyWhileInDebt = applyAction(s, 'a', { type: 'buy-etf', etfId: 'CAN-FIN', shares: 1 });
+    expect(buyWhileInDebt.ok).toBe(false);
   });
 
   test('forced ETF sales in debt phase apply the fire-sale haircut and settle debt atomically', () => {

@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import { applyAction, decideAction, whoMustAct } from '@monopoly/shared';
+import { applyAction, decideAction, settleGame, whoMustAct } from '@monopoly/shared';
 import type { Action, GameEvent } from '@monopoly/shared';
 import { touch, type Room } from './rooms';
 
@@ -36,6 +36,18 @@ export function applyPlayerAction(
   return null;
 }
 
+
+export function settleRoomGame(io: Server, room: Room): string | null {
+  if (!room.game) return '\u6e38\u620f\u5c1a\u672a\u5f00\u59cb';
+
+  const result = settleGame(room.game);
+  if (!result.ok) return result.error;
+
+  room.game = result.state;
+  touch(room);
+  broadcast(io, room, result.events);
+  return null;
+}
 /** 轮到 AI 时, 延迟一小会儿执行, 让真人看得清节奏 */
 function scheduleAi(io: Server, room: Room): void {
   if (room.aiTimer) {

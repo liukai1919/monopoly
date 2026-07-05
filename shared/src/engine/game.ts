@@ -100,10 +100,20 @@ export function applyAction(
   return { ok: true, state: s, events: ctx.events };
 }
 
+export function settleGame(state: GameState): ApplyResult {
+  const s = structuredClone(state);
+  const ctx: Ctx = { events: [], rng: Math.random };
+  const error = manualSettlementError(s);
+  if (error) return { ok: false, error };
+  finishByNetWorth(s, ctx, '主持人发起结算! 按净资产结算');
+  return { ok: true, state: s, events: ctx.events };
+}
+
 function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): string | null {
   const isCurrent = player.id === s.currentPlayer;
   const inTurnPhase = s.phase === 'awaiting-roll' || s.phase === 'manage';
   const isDebtor = s.phase === 'awaiting-debt' && s.debts[0]?.debtor === player.id;
+  const owesDebt = s.debts.some((debt) => debt.debtor === player.id);
 
   switch (action.type) {
     case 'roll': {
@@ -305,7 +315,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       return null;
     }
     case 'buy-etf': {
-      if (!(isCurrent && inTurnPhase)) return '只能在自己的回合管理阶段买入 ETF';
+      if (owesDebt) return '先结清债务, 不能买入 ETF';
       const reason = validateEtfOrder(s, action.etfId, action.shares);
       if (reason) return reason;
       const portfolio = ensurePortfolio(s, player.id);
@@ -326,12 +336,11 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       return null;
     }
     case 'sell-etf': {
-      if (!((isCurrent && inTurnPhase) || isDebtor)) return '现在不能卖出 ETF';
       const reason = validateEtfOrder(s, action.etfId, action.shares);
       if (reason) return reason;
       const portfolio = ensurePortfolio(s, player.id);
       if (portfolio[action.etfId] < action.shares) return 'ETF 持仓不足';
-      const forced = s.phase === 'awaiting-debt';
+      const forced = isDebtor;
       const quote = quoteEtfSale(s, action.etfId, action.shares, forced);
       portfolio[action.etfId] -= action.shares;
       player.cash += quote.netCash;
@@ -824,6 +833,25 @@ function checkWin(s: GameState, ctx: Ctx): boolean {
   return false;
 }
 
+function manualSettlementError(s: GameState): string | null {
+  if (s.phase === 'game-over') return '游戏已结束';
+  if (s.debts.length > 0 || s.phase === 'awaiting-debt') return '还有未结清债务, 先完成筹钱或破产处理';
+  if (s.auction || s.phase === 'auction') return '拍卖结束后再结算';
+  if (s.pendingCard || s.phase === 'awaiting-card') return '先抽卡并完成结算';
+  if (s.pendingBuyTile != null || s.phase === 'awaiting-buy') return '先处理购买或拍卖再结算';
+  return null;
+}
+
+function finishByNetWorth(s: GameState, ctx: Ctx, reason: string): void {
+  const ranked = alivePlayers(s).sort((a, b) => netWorth(s, b.id) - netWorth(s, a.id));
+  const winner = ranked[0]!;
+  s.trade = null;
+  s.winner = winner.id;
+  s.phase = 'game-over';
+  ctx.events.push({ type: 'game-over', winner: winner.id });
+  log(s, `${reason}, 🏆 ${winner.name} 以 $${netWorth(s, winner.id)} 获胜!`);
+}
+
 // ---------------------------------------------------------------- 拍卖
 
 function startAuction(s: GameState, tileIds: number[]): void {
@@ -1025,12 +1053,7 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
   s.turnCount += 1;
 
   if (s.settings.maxTurns && s.turnCount >= s.settings.maxTurns) {
-    const ranked = alivePlayers(s).sort((a, b) => netWorth(s, b.id) - netWorth(s, a.id));
-    const winner = ranked[0]!;
-    s.winner = winner.id;
-    s.phase = 'game-over';
-    ctx.events.push({ type: 'game-over', winner: winner.id });
-    log(s, `达到回合上限! 按净资产结算, 🏆 ${winner.name} 以 $${netWorth(s, winner.id)} 获胜!`);
+    finishByNetWorth(s, ctx, '达到回合上限! 按净资产结算');
     return;
   }
 

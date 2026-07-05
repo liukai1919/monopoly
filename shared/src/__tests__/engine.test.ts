@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   BOARD, CHANCE_CARDS, CHEST_CARDS, ETF_DEFINITIONS, applyAction, canBuild, computeRent, createGame,
-  groupTiles, isOwnable,
+  groupTiles, isOwnable, settleGame,
 } from '../index';
 import { recordMarketEvent } from '../market';
 import type { Action, GameState, RNG, SeatInfo } from '../index';
@@ -562,6 +562,31 @@ describe('房规与结算', () => {
     s = mustApply(s, 'b', { type: 'end-turn' });
     expect(s.phase).toBe('game-over');
     expect(s.winner).toBe('a'); // a 多一块多伦多
+  });
+
+  test('host can settle by net worth immediately', () => {
+    const s = newGame(2);
+    s.ownership[39]!.owner = 'a';
+    s.portfolios.b!['CAN-REAL'] = 1;
+
+    const r = settleGame(s);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.state.phase).toBe('game-over');
+    expect(r.state.winner).toBe('a');
+    expect(r.events).toContainEqual({ type: 'game-over', winner: 'a' });
+    expect(s.phase).toBe('awaiting-roll');
+  });
+
+  test('host settlement waits for pending decisions', () => {
+    let s = newGame(2);
+    player(s, 'a').position = 38;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2));
+
+    const r = settleGame(s);
+
+    expect(r.ok).toBe(false);
   });
 });
 

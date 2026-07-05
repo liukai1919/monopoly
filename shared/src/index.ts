@@ -6,6 +6,6 @@ export * from './portfolio';
 export * from './playerTokens';
 export * from './pricingEngine';
 export * from './engine/helpers';
-export { AUCTION_TURN_MS, applyAction, createGame } from './engine/game';
+export { AUCTION_TURN_MS, applyAction, createGame, settleGame } from './engine/game';
 export type { SeatInfo } from './engine/game';
 export { decideAction } from './ai/simpleAi';

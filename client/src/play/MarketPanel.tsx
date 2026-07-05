@@ -10,10 +10,11 @@ export default function MarketPanel({ game, meId, act }: {
 }) {
   const me = game.players.find((p) => p.id === meId)!;
   const portfolio = game.portfolios[meId];
-  const isMyTradingPhase = game.currentPlayer === meId
-    && (game.phase === 'awaiting-roll' || game.phase === 'manage');
   const isMyDebtPhase = game.phase === 'awaiting-debt' && game.debts[0]?.debtor === meId;
-  const canSell = isMyTradingPhase || isMyDebtPhase;
+  const owesDebt = game.debts.some((debt) => debt.debtor === meId);
+  const canTrade = !me.bankrupt && game.phase !== 'game-over';
+  const canBuy = canTrade && !owesDebt;
+  const canSell = canTrade;
 
   return (
     <div className="market-panel">
@@ -24,12 +25,12 @@ export default function MarketPanel({ game, meId, act }: {
         </div>
         <div>
           <span>交易状态</span>
-          <b>{isMyDebtPhase ? '火售筹钱' : isMyTradingPhase ? '可交易' : '仅查看'}</b>
+          <b>{game.phase === 'game-over' ? '已结算' : isMyDebtPhase ? '火售筹钱' : '可交易'}</b>
         </div>
       </div>
 
-      {!isMyTradingPhase && !isMyDebtPhase && (
-        <p className="home-hint">证券交易在你的回合开放；债务阶段可强制卖出 ETF 筹钱。</p>
+      {isMyDebtPhase && (
+        <p className="home-hint">债务阶段只能火售 ETF 筹钱，结清后会自动继续。</p>
       )}
 
       {Object.keys(game.market.etfs).map((id) => {
@@ -76,7 +77,8 @@ export default function MarketPanel({ game, meId, act }: {
             <div className="market-actions">
               {!isMyDebtPhase && (
                 <button
-                  className={`btn btn-sm ${!isMyTradingPhase || me.cash < buyCost ? 'btn-dim' : ''}`}
+                  className={`btn btn-sm ${!canBuy || me.cash < buyCost ? 'btn-dim' : ''}`}
+                  disabled={!canBuy || me.cash < buyCost}
                   onClick={() => act({ type: 'buy-etf', etfId, shares: 1 })}
                 >
                   买 1 股 -${buyCost}
@@ -84,6 +86,7 @@ export default function MarketPanel({ game, meId, act }: {
               )}
               <button
                 className={`btn btn-sm ${!canSell || shares <= 0 ? 'btn-dim' : ''}`}
+                disabled={!canSell || shares <= 0}
                 onClick={() => act({ type: 'sell-etf', etfId, shares: 1 })}
               >
                 {isMyDebtPhase ? '火售' : '卖'} 1 股 +${saleQuote.netCash}
@@ -91,6 +94,7 @@ export default function MarketPanel({ game, meId, act }: {
               {isMyDebtPhase && shares > 1 && (
                 <button
                   className="btn btn-sm"
+                  disabled={!canSell}
                   onClick={() => act({ type: 'sell-etf', etfId, shares })}
                 >
                   全部火售 +${quoteEtfSale(game, etfId, shares, true).netCash}
