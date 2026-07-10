@@ -4,6 +4,7 @@ export type ColorGroup =
   | 'red' | 'yellow' | 'green' | 'darkblue';
 
 export type DiceStyle = 'classic' | 'maple' | 'neon';
+export type BoardMode = 'classic' | 'living-city';
 export type Language = 'zh' | 'en' | 'fr';
 export type IndustryTag =
   | 'realEstate'
@@ -194,6 +195,7 @@ export interface MarketState {
 }
 
 export interface GameSettings {
+  boardMode: BoardMode;         // 棋盘表现模式, 不改变游戏规则
   freeParkingPot: boolean;      // 房规: 税款进免费停车奖池
   maxTurns: number | null;      // 回合上限, 到达后按净资产分胜负 (null = 玩到只剩一人)
   diceStyle: DiceStyle;

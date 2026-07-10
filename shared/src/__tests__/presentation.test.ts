@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { actionBypassesPresentationLock, actionPresentationLockMs } from '../presentation';
+import { actionBypassesPresentationLock, actionPresentationLockMs, parseBoardMode } from '../presentation';
 import type { GameEvent } from '../types';
 
 const EVENT_CASES: [string, GameEvent, number][] = [
@@ -43,5 +43,14 @@ describe('presentation pacing', () => {
     expect(actionBypassesPresentationLock({ type: 'buy-etf', etfId: 'CAN-REAL', shares: 1 })).toBe(true);
     expect(actionBypassesPresentationLock({ type: 'sell-etf', etfId: 'CAN-REAL', shares: 1 })).toBe(true);
     expect(actionBypassesPresentationLock({ type: 'roll' })).toBe(false);
+  });
+});
+
+describe('board mode parsing', () => {
+  test('accepts known modes and falls back to classic for untrusted input', () => {
+    expect(parseBoardMode('living-city')).toBe('living-city');
+    expect(parseBoardMode('classic')).toBe('classic');
+    expect(parseBoardMode('future-mode')).toBe('classic');
+    expect(parseBoardMode(undefined)).toBe('classic');
   });
 });

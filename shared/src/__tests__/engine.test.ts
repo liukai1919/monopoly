@@ -89,6 +89,23 @@ describe('国际化设置', () => {
   });
 });
 
+describe('棋盘显示模式', () => {
+  test('未指定时使用经典棋盘', () => {
+    const s = newGame();
+    expect(s.settings.boardMode).toBe('classic');
+  });
+
+  test('旧棋局首次行动时补齐经典棋盘模式', () => {
+    const s = newGame();
+    delete (s.settings as Partial<GameState['settings']>).boardMode;
+
+    const result = applyAction(s, 'a', { type: 'roll' }, diceRng(1, 2));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.state.settings.boardMode).toBe('classic');
+  });
+});
+
 describe('移动与起点薪水', () => {
   test('经过起点领 $200, 落在无主地进入购买阶段', () => {
     let s = newGame();

@@ -74,6 +74,7 @@ export function createGame(
     turnCount: 0,
     winner: null,
     settings: {
+      boardMode: 'classic',
       freeParkingPot: false,
       maxTurns: null,
       diceStyle: 'classic',
@@ -111,6 +112,7 @@ export function applyAction(
   const s = structuredClone(state);
   s.stats ??= createGameStats(s.players);
   s.boomIndustry ??= null;
+  s.settings.boardMode ??= 'classic';
   const ctx: Ctx = { events: [], rng };
   const player = s.players.find((p) => p.id === playerId);
   if (!player) return { ok: false, error: '未知玩家' };

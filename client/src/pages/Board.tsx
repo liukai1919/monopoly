@@ -5,12 +5,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import {
   GROUP_COLORS, PRESENTATION_TIMING_MS, getPlayerToken, getTile, isOwnable, presentationForGameEvent,
 } from '@monopoly/shared';
-import type { DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
+import type { BoardMode, DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import type { RoomSnapshot } from '../api';
-import BoardGrid from '../board/BoardGrid';
-import type { ConstructionFxItem, MoneyFxItem } from '../board/BoardGrid';
-import CenterStage from '../board/CenterStage';
+import BoardExperience from '../board/BoardExperience';
+import type { ConstructionFxItem, MoneyFxItem } from '../board/BoardExperience';
 import SettlementScreen from '../board/SettlementScreen';
 import Sidebar from '../board/Sidebar';
 import {
@@ -360,27 +359,22 @@ export default function Board() {
   return (
     <div className="board-page">
       <div className="board-area">
-        <BoardGrid
+        <BoardExperience
           game={room.game}
           language={activeLanguage}
-          positions={positions}
-          rollingPlayerId={rollingPlayerId}
-          diceRolling={diceRolling}
-          moneyFx={moneyFx}
-          constructionFx={constructionFx}
-          landedFx={landedFx}
-        >
-          <CenterStage
-            game={room.game}
-            language={activeLanguage}
-            code={code}
-            shownDice={shownDice}
-            diceRolling={diceRolling}
-            rollingPlayerId={rollingPlayerId}
-            cardFlash={cardFlash}
-            deedCard={deedCard}
-          />
-        </BoardGrid>
+          code={code}
+          presentation={{
+            positions,
+            shownDice,
+            diceRolling,
+            rollingPlayerId,
+            cardFlash,
+            deedCard,
+            moneyFx,
+            constructionFx,
+            landedFx,
+          }}
+        />
         {bankruptFx && (
           <div className="board-flash bankrupt-flash">
             <div className="bankrupt-stamp">{tr(activeLanguage, '💥 破产', '💥 Bankrupt', '💥 Faillite')}</div>
@@ -590,6 +584,7 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
 }) {
   const [freeParkingPot, setFreeParkingPot] = useState(false);
   const [industryBoom, setIndustryBoom] = useState(true);
+  const [boardMode, setBoardMode] = useState<BoardMode>('living-city');
   const [maxTurns, setMaxTurns] = useState<number>(0);
   const [diceStyle, setDiceStyle] = useState<DiceStyle>('classic');
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -597,7 +592,7 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
 
   async function start() {
     const res = await emitAck('lobby:start', {
-      code, freeParkingPot, industryBoom, maxTurns: maxTurns || null, diceStyle, soundEnabled, language,
+      code, boardMode, freeParkingPot, industryBoom, maxTurns: maxTurns || null, diceStyle, soundEnabled, language,
     });
     if (res?.error) setStartError(localizeMessage(res.error, language));
   }
@@ -647,6 +642,54 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
               <span>{tr(language, '语言', 'Language', 'Langue')}</span>
               <LanguageSwitch language={language} onChange={onLanguageChange} />
             </div>
+            <fieldset className="board-mode-picker">
+              <legend>{tr(language, '棋盘体验', 'Board experience', 'Expérience du plateau')}</legend>
+              <label className={`board-mode-option ${boardMode === 'living-city' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="board-mode"
+                  value="living-city"
+                  checked={boardMode === 'living-city'}
+                  onChange={() => setBoardMode('living-city')}
+                />
+                <span className="board-mode-preview board-mode-preview-city" aria-hidden="true">
+                  <i /><i /><i /><i />
+                </span>
+                <span className="board-mode-copy">
+                  <b>
+                    {tr(language, '城市脉搏', 'Living City', 'Ville vivante')}
+                    <em>{tr(language, '推荐', 'Recommended', 'Recommandé')}</em>
+                  </b>
+                  <small>{tr(
+                    language,
+                    '动态街区与市场联动，同一套经典规则',
+                    'Dynamic districts and market energy, with the same rules',
+                    'Quartiers dynamiques et marché vivant, avec les mêmes règles',
+                  )}</small>
+                </span>
+              </label>
+              <label className={`board-mode-option ${boardMode === 'classic' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="board-mode"
+                  value="classic"
+                  checked={boardMode === 'classic'}
+                  onChange={() => setBoardMode('classic')}
+                />
+                <span className="board-mode-preview board-mode-preview-classic" aria-hidden="true">
+                  <i /><i /><i /><i />
+                </span>
+                <span className="board-mode-copy">
+                  <b>{tr(language, '经典棋盘', 'Classic Board', 'Plateau classique')}</b>
+                  <small>{tr(
+                    language,
+                    '熟悉的方形布局，信息直接清晰',
+                    'The familiar square layout with direct readability',
+                    'La disposition carrée familière et très lisible',
+                  )}</small>
+                </span>
+              </label>
+            </fieldset>
             <label>
               <input
                 type="checkbox"

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { createGame, parseLanguage } from '@monopoly/shared';
+import { createGame, parseBoardMode, parseLanguage } from '@monopoly/shared';
 import type { DiceStyle, Language } from '@monopoly/shared';
 import { applyPlayerAction, broadcast, settleRoomGame } from './gameHost';
 import {
@@ -181,6 +181,7 @@ io.on('connection', (socket) => {
       soundEnabled?: boolean;
       language?: Language;
       industryBoom?: boolean;
+      boardMode?: unknown;
     },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
@@ -207,6 +208,7 @@ io.on('connection', (socket) => {
           soundEnabled: payload?.soundEnabled ?? true,
           language: room.language,
           industryBoom: !!payload?.industryBoom,
+          boardMode: parseBoardMode(payload?.boardMode),
         },
       );
       for (const gp of room.game.players) {
