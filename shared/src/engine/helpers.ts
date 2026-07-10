@@ -118,6 +118,7 @@ export function canBuild(s: GameState, playerId: string, tileId: number): string
   if (own?.owner !== playerId) return '这不是你的地';
   if (!ownsFullGroup(s, playerId, tile.group)) return '需要集齐同色地块才能盖房';
   const group = groupTiles(tile.group);
+  const player = getPlayer(s, playerId);
   if (group.some((t) => s.ownership[t.id]?.mortgaged)) return '同色组有地块被抵押, 不能盖房';
   if (own.houses >= 5) return '已经是酒店了';
   const minHouses = Math.min(...group.map((t) => s.ownership[t.id]!.houses));
@@ -127,7 +128,6 @@ export function canBuild(s: GameState, playerId: string, tileId: number): string
   } else if (s.housesRemaining <= 0) {
     return '银行的房子已经发完了';
   }
-  const player = getPlayer(s, playerId);
   if (player.cash < tile.houseCost) return '现金不足';
   return null;
 }

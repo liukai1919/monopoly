@@ -114,6 +114,33 @@ b { font-weight: 700; }
 .home-join { display: flex; gap: 10px; }
 .home-hint { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
 .home-error { color: #ff8f9e; font-size: 14px; }
+.language-switch {
+  display: inline-flex;
+  align-self: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #ffffff18;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.language-switch button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.language-switch button.active {
+  background: var(--maple);
+  color: #fff;
+  font-weight: 800;
+}
+.language-switch-compact {
+  align-self: auto;
+  margin-left: auto;
+}
 .board-loading {
   height: 100vh;
   display: flex;
@@ -186,6 +213,7 @@ b { font-weight: 700; }
 .lobby-ai-btns .btn { flex: 1; }
 .lobby-settings { display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--text-dim); }
 .lobby-settings label { display: flex; align-items: center; gap: 8px; }
+.lobby-setting-row { display: flex; align-items: center; gap: 10px; }
 .lobby-settings select {
   background: var(--surface-2);
   color: var(--text);
@@ -240,8 +268,35 @@ b { font-weight: 700; }
   border: 1px solid #0002;
 }
 .tile-left .tile-bar, .tile-right .tile-bar { flex-basis: 22%; }
-.tile-houses { font-size: clamp(7px, 1.1vh, 12px); color: #0c3; text-shadow: 0 0 2px #063; letter-spacing: -1px; }
-.tile-bar .tile-houses { color: #eaffea; }
+.tile-buildings {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 1px;
+}
+.tile-left .tile-buildings,
+.tile-right .tile-buildings {
+  flex-direction: column;
+  gap: 0;
+}
+.tile-building-img {
+  width: clamp(9px, 1.45vh, 16px);
+  height: clamp(9px, 1.45vh, 16px);
+  max-width: calc(100% - 2px);
+  max-height: calc(100% - 2px);
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px #0008);
+}
+.tile-buildings-hotel .tile-building-img,
+.tile-hotel-img {
+  width: clamp(15px, 2.2vh, 25px);
+  height: clamp(15px, 2.2vh, 25px);
+  max-width: calc(100% - 2px);
+  max-height: calc(100% - 2px);
+}
 
 .tile-body {
   flex: 1;
@@ -893,6 +948,87 @@ b { font-weight: 700; }
   14% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
   80% { opacity: 1; }
   100% { left: var(--tx); top: var(--ty); opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+}
+
+.construction-burst {
+  position: absolute;
+  left: var(--tx);
+  top: var(--ty);
+  width: clamp(54px, 9vh, 96px);
+  height: clamp(54px, 9vh, 96px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: construction-pop 1.35s ease-out both;
+}
+.construction-ring {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 4px solid #ffd166dd;
+  box-shadow: 0 0 24px #ffd166aa;
+  animation: construction-ring 1.15s ease-out both;
+}
+.construction-tools {
+  position: absolute;
+  left: 5%;
+  top: 2%;
+  font-size: clamp(18px, 3vh, 34px);
+  filter: drop-shadow(0 4px 7px #0008);
+  animation: construction-tool-swing 0.8s ease-in-out both;
+}
+.construction-building {
+  width: 62%;
+  height: 62%;
+  object-fit: contain;
+  filter: drop-shadow(0 7px 11px #0008);
+  animation: construction-building-rise 0.82s cubic-bezier(0.15, 1.35, 0.24, 1) both;
+}
+.construction-hotel .construction-building {
+  width: 74%;
+  height: 74%;
+}
+.construction-spark {
+  position: absolute;
+  color: #fff6bf;
+  font-size: clamp(16px, 2.6vh, 30px);
+  text-shadow: 0 0 10px #ffd166;
+}
+.construction-spark-a {
+  right: 13%;
+  top: 14%;
+  animation: construction-spark 0.74s ease-out 0.1s both;
+}
+.construction-spark-b {
+  left: 18%;
+  bottom: 18%;
+  animation: construction-spark 0.74s ease-out 0.24s both;
+}
+@keyframes construction-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.58); }
+  14%, 78% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -58%) scale(0.96); }
+}
+@keyframes construction-ring {
+  from { opacity: 0.95; transform: scale(0.45); }
+  to { opacity: 0; transform: scale(1.55); }
+}
+@keyframes construction-tool-swing {
+  0% { opacity: 0; transform: translateY(10px) rotate(-18deg); }
+  18% { opacity: 1; }
+  55% { transform: translateY(0) rotate(10deg); }
+  100% { opacity: 0; transform: translateY(-12px) rotate(-8deg); }
+}
+@keyframes construction-building-rise {
+  0% { opacity: 0; transform: translateY(22px) scale(0.42); }
+  62% { opacity: 1; transform: translateY(-2px) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes construction-spark {
+  0% { opacity: 0; transform: scale(0.2) rotate(0deg); }
+  38% { opacity: 1; transform: scale(1.15) rotate(18deg); }
+  100% { opacity: 0; transform: scale(0.55) rotate(42deg); }
 }
 
 .tile-land-pulse {

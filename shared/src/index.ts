@@ -1,9 +1,11 @@
 export * from './types';
 export * from './board';
 export * from './cards';
+export * from './i18n';
 export * from './market';
 export * from './portfolio';
 export * from './playerTokens';
+export * from './presentation';
 export * from './pricingEngine';
 export * from './engine/helpers';
 export { AUCTION_TURN_MS, applyAction, createGame, settleGame } from './engine/game';

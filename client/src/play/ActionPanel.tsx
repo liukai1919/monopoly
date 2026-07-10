@@ -1,79 +1,104 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { JAIL_FINE, getTile, isOwnable, liquidationValue } from '@monopoly/shared';
-import type { Action, GameState, TradeSide } from '@monopoly/shared';
+import type { Action, GameState, Language, TradeSide } from '@monopoly/shared';
+import { localizeDeckName, localizeTileInstruction, localizeTileName, tr } from '../i18n';
 
 interface Props {
   game: GameState;
+  language: Language;
   meId: string;
   act: (a: Action) => void;
+  actionLocked?: boolean;
 }
 
-export default function ActionPanel({ game, meId, act }: Props) {
+export default function ActionPanel({ game, language, meId, act, actionLocked = false }: Props) {
   const me = game.players.find((p) => p.id === meId)!;
   const isMyTurn = game.currentPlayer === meId;
-  const shakeRoll = useShakeToRoll(game.phase === 'awaiting-roll' && isMyTurn, () => act({ type: 'roll' }));
+  const shakeRoll = useShakeToRoll(!actionLocked && game.phase === 'awaiting-roll' && isMyTurn, () => act({ type: 'roll' }));
   const roll = useCallback(async () => {
     await shakeRoll.requestAccess();
     act({ type: 'roll' });
   }, [act, shakeRoll]);
 
-  if (me.bankrupt) return <div className="panel-note">💀 你已破产出局, 泡杯茶看戏吧</div>;
+  if (me.bankrupt) {
+    return (
+      <div className="panel-note">
+        💀 {tr(language, '你已破产出局, 泡杯茶看戏吧', 'You are bankrupt and out. Time to watch the table.', 'Vous êtes en faillite et éliminé. Regardez la suite.')}
+      </div>
+    );
+  }
 
   if (game.phase === 'game-over') {
     const winner = game.players.find((p) => p.id === game.winner);
     return (
       <div className="panel-note">
-        🏆 {winner?.name} 获胜!{winner?.id === meId ? ' 恭喜你!' : ''}
-        <p className="home-hint">在大屏上点「再来一局」</p>
+        🏆 {tr(language, `${winner?.name} 获胜!`, `${winner?.name} wins!`, `${winner?.name} gagne!`)}
+        {winner?.id === meId ? tr(language, ' 恭喜你!', ' Congrats!', ' Félicitations!') : ''}
+        <p className="home-hint">{tr(language, '在大屏上点「再来一局」', 'Tap "Play Again" on the big screen.', 'Touchez « Rejouer » sur le grand écran.')}</p>
+      </div>
+    );
+  }
+
+  if (actionLocked) {
+    return (
+      <div className="panel-note">
+        🎬 {tr(language, '大屏动画播放中…', 'Big-screen animation playing...', 'Animation du grand écran en cours...')}
+        <p className="home-hint">{tr(language, '等棋子走完再继续操作', 'Wait for the pieces to finish moving.', 'Attendez la fin du déplacement.')}</p>
       </div>
     );
   }
 
   return (
     <div className="action-panel">
-      {game.trade?.to === meId && <IncomingTrade game={game} act={act} />}
+      {game.trade?.to === meId && <IncomingTrade game={game} language={language} act={act} />}
       {game.trade?.from === meId && (
         <div className="panel-card">
-          <div className="panel-card-title">🤝 等待对方回应交易…</div>
-          <button className="btn" onClick={() => act({ type: 'cancel-trade' })}>撤回交易</button>
+          <div className="panel-card-title">🤝 {tr(language, '等待对方回应交易…', 'Waiting for trade response...', 'En attente de réponse...')}</div>
+          <button className="btn" onClick={() => act({ type: 'cancel-trade' })}>{tr(language, '撤回交易', 'Cancel Trade', 'Annuler l’échange')}</button>
         </div>
       )}
 
-      {game.phase === 'auction' && <AuctionBidder game={game} meId={meId} act={act} />}
-      {game.phase === 'awaiting-debt' && <DebtSection game={game} meId={meId} act={act} />}
-      {game.phase === 'awaiting-card' && <CardDrawSection game={game} meId={meId} act={act} />}
+      {game.phase === 'auction' && <AuctionBidder game={game} language={language} meId={meId} act={act} />}
+      {game.phase === 'awaiting-debt' && <DebtSection game={game} language={language} meId={meId} act={act} />}
+      {game.phase === 'awaiting-card' && <CardDrawSection game={game} language={language} meId={meId} act={act} />}
 
       {game.phase === 'awaiting-roll' && isMyTurn && (
-        me.inJail ? <JailOptions game={game} meId={meId} act={act} onRoll={roll} /> : (
+        me.inJail ? <JailOptions game={game} language={language} meId={meId} act={act} onRoll={roll} /> : (
           <div className="panel-center">
-            {game.doublesCount > 0 && <div className="panel-badge">🎉 双数! 再掷一次</div>}
+            {game.doublesCount > 0 && <div className="panel-badge">🎉 {tr(language, '双数! 再掷一次', 'Doubles! Roll again', 'Double! Relancez')}</div>}
             <button className="btn btn-roll" onClick={() => void roll()}>
-              🎲<br />掷骰子
+              🎲<br />{tr(language, '掷骰子', 'Roll', 'Lancer')}
             </button>
             <div className={`shake-status shake-status-${shakeRoll.status}`}>
-              {shakeRoll.status === 'ready' ? '摇一摇已就绪' : '点一次后可摇一摇'}
+              {shakeRoll.status === 'ready'
+                ? tr(language, '摇一摇已就绪', 'Shake-to-roll ready', 'Secouer pour lancer prêt')
+                : tr(language, '点一次后可摇一摇', 'Tap once, then shake to roll', 'Touchez une fois, puis secouez')}
             </div>
-            <p className="home-hint">掷骰前也可以先去「资产」盖房 / 赎回</p>
+            <p className="home-hint">
+              {tr(language, '掷骰前也可以先去「资产」赎回, 停在自己色组上还能盖房', 'Before rolling, you can unmortgage assets or build if you are on your own color set.', 'Avant de lancer, vous pouvez lever une hypothèque ou construire si vous êtes sur votre groupe.')}
+            </p>
           </div>
         )
       )}
 
-      {game.phase === 'awaiting-buy' && isMyTurn && <BuyDecision game={game} meId={meId} act={act} />}
+      {game.phase === 'awaiting-buy' && isMyTurn && <BuyDecision game={game} language={language} meId={meId} act={act} />}
 
       {game.phase === 'manage' && isMyTurn && (
         <div className="panel-center">
           <button className="btn btn-primary btn-xl" onClick={() => act({ type: 'end-turn' })}>
-            ✅ 结束回合
+            ✅ {tr(language, '结束回合', 'End Turn', 'Fin du tour')}
           </button>
-          <p className="home-hint">结束前可以盖房、抵押、发起交易</p>
+          <p className="home-hint">{tr(language, '结束前可以抵押、交易, 停在自己色组上还能盖房', 'Before ending, you can mortgage, trade, or build on your own color set.', 'Avant de finir, vous pouvez hypothéquer, échanger ou construire sur votre groupe.')}</p>
         </div>
       )}
 
       {!isMyTurn && (game.phase === 'awaiting-roll' || game.phase === 'awaiting-buy' || game.phase === 'manage') && (
         <div className="panel-note">
-          ⏳ 等待其他玩家行动…
-          {game.trade == null && <p className="home-hint">可以先去「交易」页跟别人谈生意</p>}
+          ⏳ {tr(language, '等待其他玩家行动…', 'Waiting for another player...', 'En attente d’un autre joueur...')}
+          {game.trade == null && (
+            <p className="home-hint">{tr(language, '可以先去「交易」页跟别人谈生意', 'You can visit Trade and make an offer.', 'Vous pouvez aller dans Échange et proposer une offre.')}</p>
+          )}
         </div>
       )}
     </div>
@@ -82,12 +107,12 @@ export default function ActionPanel({ game, meId, act }: Props) {
 
 // ---------------- 抽牌 ----------------
 
-function CardDrawSection({ game, meId, act }: Props) {
+function CardDrawSection({ game, language, meId, act }: Props) {
   const pending = game.pendingCard;
   if (!pending) return null;
   const player = game.players.find((p) => p.id === pending.playerId);
   const tile = getTile(pending.tileId);
-  const deckName = pending.deck === 'chance' ? '机会' : '宝箱';
+  const deckName = localizeDeckName(pending.deck, language);
   const isMine = pending.playerId === meId;
   const [dragY, setDragY] = useState(0);
   const [drawing, setDrawing] = useState(false);
@@ -115,17 +140,17 @@ function CardDrawSection({ game, meId, act }: Props) {
   if (!isMine) {
     return (
       <div className="panel-note">
-        ⏳ 等 {player?.name} 抽{deckName}卡…
-        <p className="home-hint">{tile.instruction}</p>
+        ⏳ {tr(language, `等 ${player?.name} 抽${deckName}卡…`, `Waiting for ${player?.name} to draw ${deckName}...`, `En attente de ${player?.name} pour piocher ${deckName}...`)}
+        <p className="home-hint">{localizeTileInstruction(tile, language)}</p>
       </div>
     );
   }
 
   return (
-    <div className={`panel-card card-draw-panel card-draw-${pending.deck}`}>
-      <div className="card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}卡</div>
-      <div className="panel-card-title">你来到了 {tile.name}</div>
-      <p className="home-hint">{tile.instruction}</p>
+      <div className={`panel-card card-draw-panel card-draw-${pending.deck}`}>
+      <div className="card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}</div>
+      <div className="panel-card-title">{tr(language, `你来到了 ${localizeTileName(tile, language)}`, `You landed on ${localizeTileName(tile, language)}`, `Vous arrivez sur ${localizeTileName(tile, language)}`)}</div>
+      <p className="home-hint">{localizeTileInstruction(tile, language)}</p>
       <div className={`phone-card-reveal phone-card-reveal-${pending.deck} ${drawing ? 'revealing' : ''}`}>
         <div className="phone-card-slot" aria-hidden="true" />
         <button
@@ -168,8 +193,8 @@ function CardDrawSection({ game, meId, act }: Props) {
           }}
         >
           <span className="phone-card-back-icon">{pending.deck === 'chance' ? '❓' : '🎁'}</span>
-          <span className="phone-card-back-title">{deckName}卡</span>
-          <span className="phone-card-back-hint">划开翻牌</span>
+          <span className="phone-card-back-title">{deckName}</span>
+          <span className="phone-card-back-hint">{tr(language, '划开翻牌', 'Swipe to reveal', 'Glissez pour révéler')}</span>
         </button>
       </div>
     </div>
@@ -178,26 +203,28 @@ function CardDrawSection({ game, meId, act }: Props) {
 
 // ---------------- 监狱 ----------------
 
-function JailOptions({ game, meId, act, onRoll }: Props & { onRoll: () => void }) {
+function JailOptions({ game, language, meId, act, onRoll }: Props & { onRoll: () => void }) {
   const me = game.players.find((p) => p.id === meId)!;
   return (
     <div className="panel-card">
-      <div className="panel-card-title">🚔 你在监狱里 (第 {me.jailTurns + 1}/3 回合)</div>
+      <div className="panel-card-title">
+        🚔 {tr(language, `你在监狱里 (第 ${me.jailTurns + 1}/3 回合)`, `You are in jail (turn ${me.jailTurns + 1}/3)`, `Vous êtes en prison (tour ${me.jailTurns + 1}/3)`)}
+      </div>
       <div className="btn-stack">
         <button className="btn btn-primary" onClick={onRoll}>
-          🎲 掷骰子碰运气 (双数出狱)
+          🎲 {tr(language, '掷骰子碰运气 (双数出狱)', 'Roll for doubles to leave jail', 'Lancez pour faire un double et sortir')}
         </button>
         <button
           className={`btn ${me.cash < JAIL_FINE ? 'btn-dim' : ''}`}
           onClick={() => act({ type: 'jail-pay' })}
         >
-          💵 交 ${JAIL_FINE} 保释金
+          💵 {tr(language, `交 $${JAIL_FINE} 保释金`, `Pay $${JAIL_FINE} bail`, `Payer ${JAIL_FINE} $ de caution`)}
         </button>
         <button
           className={`btn ${me.jailCards.length === 0 ? 'btn-dim' : ''}`}
           onClick={() => act({ type: 'jail-card' })}
         >
-          🎫 使用出狱卡 (剩 {me.jailCards.length} 张)
+          🎫 {tr(language, `使用出狱卡 (剩 ${me.jailCards.length} 张)`, `Use jail card (${me.jailCards.length} left)`, `Utiliser une carte prison (${me.jailCards.length} restante${me.jailCards.length > 1 ? 's' : ''})`)}
         </button>
       </div>
     </div>
@@ -290,29 +317,33 @@ function useShakeToRoll(enabled: boolean, onRoll: () => void) {
 
 // ---------------- 购买决定 ----------------
 
-function BuyDecision({ game, meId, act }: Props) {
+function BuyDecision({ game, language, meId, act }: Props) {
   const me = game.players.find((p) => p.id === meId)!;
   const tile = game.pendingBuyTile != null ? getTile(game.pendingBuyTile) : null;
   if (!tile || !isOwnable(tile)) return null;
   return (
     <div className="panel-card">
-      <div className="panel-card-title">🏷️ 要买下 {tile.name} 吗?</div>
+      <div className="panel-card-title">
+        🏷️ {tr(language, `要买下 ${localizeTileName(tile, language)} 吗?`, `Buy ${localizeTileName(tile, language)}?`, `Acheter ${localizeTileName(tile, language)}?`)}
+      </div>
       <div className="buy-info">
-        <div>价格 <b>${tile.price}</b></div>
-        {tile.type === 'property' && <div>基础租金 ${tile.rent[0]} · 酒店租金 ${tile.rent[5]}</div>}
-        {tile.type === 'railroad' && <div>租金 $25~$200 (按拥有铁路数翻倍)</div>}
-        {tile.type === 'utility' && <div>租金 = 骰点 ×4 (集齐两家 ×10)</div>}
-        <div>你的现金 ${me.cash}</div>
+        <div>{tr(language, '价格', 'Price', 'Prix')} <b>${tile.price}</b></div>
+        {tile.type === 'property' && (
+          <div>{tr(language, `基础租金 $${tile.rent[0]} · 酒店租金 $${tile.rent[5]}`, `Base rent $${tile.rent[0]} · hotel rent $${tile.rent[5]}`, `Loyer de base ${tile.rent[0]} $ · hôtel ${tile.rent[5]} $`)}</div>
+        )}
+        {tile.type === 'railroad' && <div>{tr(language, '租金 $25~$200 (按拥有铁路数翻倍)', 'Rent $25-$200 based on railroads owned', 'Loyer 25 $ à 200 $ selon les chemins de fer possédés')}</div>}
+        {tile.type === 'utility' && <div>{tr(language, '租金 = 骰点 ×4 (集齐两家 ×10)', 'Rent = dice total ×4 (×10 if both owned)', 'Loyer = total des dés ×4 (×10 si les deux sont possédés)')}</div>}
+        <div>{tr(language, '你的现金', 'Your cash', 'Votre argent')} ${me.cash}</div>
       </div>
       <div className="btn-stack">
         <button
           className={`btn btn-primary ${me.cash < tile.price ? 'btn-dim' : ''}`}
           onClick={() => act({ type: 'buy' })}
         >
-          💰 买下 (${tile.price})
+          💰 {tr(language, `买下 ($${tile.price})`, `Buy ($${tile.price})`, `Acheter (${tile.price} $)`)}
         </button>
         <button className="btn" onClick={() => act({ type: 'decline-buy' })}>
-          🔨 不买, 送去拍卖
+          🔨 {tr(language, '不买, 送去拍卖', 'Decline, send to auction', 'Refuser, envoyer aux enchères')}
         </button>
       </div>
     </div>
@@ -321,7 +352,7 @@ function BuyDecision({ game, meId, act }: Props) {
 
 // ---------------- 拍卖 ----------------
 
-function AuctionBidder({ game, meId, act }: Props) {
+function AuctionBidder({ game, language, meId, act }: Props) {
   const a = game.auction!;
   const me = game.players.find((p) => p.id === meId)!;
   const tile = getTile(a.tileId);
@@ -338,13 +369,13 @@ function AuctionBidder({ game, meId, act }: Props) {
 
   return (
     <div className="panel-card">
-      <div className="panel-card-title">🔨 拍卖 {tile.name}</div>
+      <div className="panel-card-title">🔨 {tr(language, '拍卖', 'Auction', 'Enchère')} {localizeTileName(tile, language)}</div>
       <div className="buy-info">
-        <div>{bidder ? <>当前最高 <b>${a.highBid}</b> ({bidder.name})</> : '尚无人出价'}</div>
-        <div>你的现金 ${me.cash} · 倒计时 {seconds}s</div>
+        <div>{bidder ? <>{tr(language, '当前最高', 'High bid', 'Meilleure offre')} <b>${a.highBid}</b> ({bidder.name})</> : tr(language, '尚无人出价', 'No bids yet', 'Aucune offre')}</div>
+        <div>{tr(language, '你的现金', 'Your cash', 'Votre argent')} ${me.cash} · {tr(language, '倒计时', 'timer', 'temps')} {seconds}s</div>
       </div>
       {folded ? (
-        <div className="panel-note">你已退出这场拍卖</div>
+        <div className="panel-note">{tr(language, '你已退出这场拍卖', 'You passed on this auction.', 'Vous avez quitté cette enchère.')}</div>
       ) : myTurn ? (
         <>
           <div className="bid-btns">
@@ -365,7 +396,7 @@ function AuctionBidder({ game, meId, act }: Props) {
             <input
               className="input"
               type="number"
-              placeholder="自定金额"
+              placeholder={tr(language, '自定金额', 'Custom amount', 'Montant libre')}
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
             />
@@ -373,15 +404,17 @@ function AuctionBidder({ game, meId, act }: Props) {
               className="btn btn-primary"
               onClick={() => custom && act({ type: 'bid', amount: Number(custom) })}
             >
-              出价
+              {tr(language, '出价', 'Bid', 'Offrir')}
             </button>
           </div>
           <button className="btn btn-danger" onClick={() => act({ type: 'pass-bid' })}>
-            🏳️ 退出竞拍
+            🏳️ {tr(language, '退出竞拍', 'Pass', 'Passer')}
           </button>
         </>
       ) : (
-        <div className="panel-note">等 {game.players.find((p) => p.id === a.turn)?.name} 表态…</div>
+        <div className="panel-note">
+          {tr(language, `等 ${game.players.find((p) => p.id === a.turn)?.name} 表态…`, `Waiting for ${game.players.find((p) => p.id === a.turn)?.name}...`, `En attente de ${game.players.find((p) => p.id === a.turn)?.name}...`)}
+        </div>
       )}
     </div>
   );
@@ -389,27 +422,29 @@ function AuctionBidder({ game, meId, act }: Props) {
 
 // ---------------- 债务 ----------------
 
-function DebtSection({ game, meId, act }: Props) {
+function DebtSection({ game, language, meId, act }: Props) {
   const debt = game.debts[0]!;
   const me = game.players.find((p) => p.id === meId)!;
   if (debt.debtor !== meId) {
     const debtor = game.players.find((p) => p.id === debt.debtor);
-    return <div className="panel-note">⏳ 等 {debtor?.name} 筹钱还债…</div>;
+    return <div className="panel-note">⏳ {tr(language, `等 ${debtor?.name} 筹钱还债…`, `Waiting for ${debtor?.name} to raise cash...`, `En attente de ${debtor?.name} pour réunir l’argent...`)}</div>;
   }
   const creditor = debt.creditor ? game.players.find((p) => p.id === debt.creditor) : null;
   const shortfall = debt.amount - me.cash;
   const canGoBankrupt = liquidationValue(game, meId) < debt.amount;
   return (
     <div className="panel-card panel-card-danger">
-      <div className="panel-card-title">💰 你需要付 ${debt.amount} 给{creditor ? creditor.name : '银行'}</div>
+      <div className="panel-card-title">
+        💰 {tr(language, `你需要付 $${debt.amount} 给${creditor ? creditor.name : '银行'}`, `You need to pay ${creditor ? creditor.name : 'the bank'} $${debt.amount}`, `Vous devez payer ${debt.amount} $ à ${creditor ? creditor.name : 'la banque'}`)}
+      </div>
       <div className="buy-info">
         <div>{debt.reason}</div>
-        <div>现金 ${me.cash} · 还差 <b>${Math.max(0, shortfall)}</b></div>
+        <div>{tr(language, '现金', 'Cash', 'Argent')} ${me.cash} · {tr(language, '还差', 'short', 'manque')} <b>${Math.max(0, shortfall)}</b></div>
       </div>
-      <p className="home-hint">去「资产」页抵押地产或卖房筹钱, 凑够会自动付清</p>
+      <p className="home-hint">{tr(language, '去「资产」页抵押地产或卖房筹钱, 凑够会自动付清', 'Use Assets to mortgage property or sell houses; the debt pays automatically once you have enough.', 'Utilisez Actifs pour hypothéquer ou vendre des maisons; la dette sera payée automatiquement.')}</p>
       {canGoBankrupt && (
         <button className="btn btn-danger" onClick={() => act({ type: 'declare-bankruptcy' })}>
-          💀 资不抵债, 宣告破产
+          💀 {tr(language, '资不抵债, 宣告破产', 'Declare Bankruptcy', 'Déclarer faillite')}
         </button>
       )}
     </div>
@@ -418,35 +453,37 @@ function DebtSection({ game, meId, act }: Props) {
 
 // ---------------- 收到交易 ----------------
 
-function IncomingTrade({ game, act }: { game: GameState; act: (a: Action) => void }) {
+function IncomingTrade({ game, language, act }: { game: GameState; language: Language; act: (a: Action) => void }) {
   const t = game.trade!;
   const from = game.players.find((p) => p.id === t.from);
   const canRespond = game.phase === 'awaiting-roll' || game.phase === 'manage';
   const side = (s: TradeSide) => {
     const bits: string[] = [];
     if (s.cash > 0) bits.push(`$${s.cash}`);
-    bits.push(...s.properties.map((id) => getTile(id).name));
-    if (s.jailCards > 0) bits.push(`出狱卡×${s.jailCards}`);
-    return bits.length ? bits.join(' + ') : '(无)';
+    bits.push(...s.properties.map((id) => localizeTileName(getTile(id), language)));
+    if (s.jailCards > 0) bits.push(`${tr(language, '出狱卡', 'Jail card', 'Carte prison')}×${s.jailCards}`);
+    return bits.length ? bits.join(' + ') : tr(language, '(无)', '(none)', '(rien)');
   };
   return (
     <div className="panel-card panel-card-trade">
-      <div className="panel-card-title">🤝 {from?.name} 想跟你交易</div>
+      <div className="panel-card-title">
+        🤝 {tr(language, `${from?.name} 想跟你交易`, `${from?.name} wants to trade`, `${from?.name} veut échanger`)}
+      </div>
       <div className="trade-summary">
-        <div className="trade-row"><span>你得到</span><b>{side(t.give)}</b></div>
-        <div className="trade-row"><span>你付出</span><b>{side(t.get)}</b></div>
+        <div className="trade-row"><span>{tr(language, '你得到', 'You get', 'Vous recevez')}</span><b>{side(t.give)}</b></div>
+        <div className="trade-row"><span>{tr(language, '你付出', 'You give', 'Vous donnez')}</span><b>{side(t.get)}</b></div>
       </div>
       {canRespond ? (
         <div className="btn-stack">
           <button className="btn btn-primary" onClick={() => act({ type: 'respond-trade', accept: true })}>
-            ✅ 成交
+            ✅ {tr(language, '成交', 'Accept', 'Accepter')}
           </button>
           <button className="btn btn-danger" onClick={() => act({ type: 'respond-trade', accept: false })}>
-            ❌ 拒绝
+            ❌ {tr(language, '拒绝', 'Decline', 'Refuser')}
           </button>
         </div>
       ) : (
-        <div className="panel-note">等当前结算完成后可回应</div>
+        <div className="panel-note">{tr(language, '等当前结算完成后可回应', 'You can respond after the current resolution finishes.', 'Vous pourrez répondre après le règlement en cours.')}</div>
       )}
     </div>
   );

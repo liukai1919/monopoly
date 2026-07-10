@@ -3,6 +3,7 @@ import {
   groupTiles, isOwnable,
 } from '../board';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
+import { DEFAULT_LANGUAGE, localizeCardText, localizeDeckName, pickLanguage } from '../i18n';
 import { createEmptyPortfolio, createMarket, industriesForEtf, recordMarketEvent } from '../market';
 import { quoteEtfBuyCostCents, quoteEtfSale } from '../portfolio';
 import { settleMarketRound } from '../pricingEngine';
@@ -71,11 +72,23 @@ export function createGame(
     portfolios: Object.fromEntries(players.map((p) => [p.id, createEmptyPortfolio()])),
     turnCount: 0,
     winner: null,
-    settings: { freeParkingPot: false, maxTurns: null, diceStyle: 'classic', soundEnabled: true, ...settings },
+    settings: {
+      freeParkingPot: false,
+      maxTurns: null,
+      diceStyle: 'classic',
+      soundEnabled: true,
+      language: DEFAULT_LANGUAGE,
+      ...settings,
+    },
     log: [],
     stats: createGameStats(players),
   };
-  log(state, `游戏开始! 每人 $${START_CASH}, ${players[0]!.name} 先行`);
+  log(state, pickLanguage(
+    state.settings.language,
+    `游戏开始! 每人 $${START_CASH}, ${players[0]!.name} 先行`,
+    `Game started! Each player has $${START_CASH}; ${players[0]!.name} goes first`,
+    `La partie commence! Chaque joueur a ${START_CASH} $; ${players[0]!.name} joue en premier`,
+  ));
   return state;
 }
 
@@ -228,6 +241,13 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
         log(s, `${player.name} 在 ${tile.name} 盖了第 ${own.houses} 栋房`);
       }
       ctx.events.push({ type: 'cash', from: player.id, to: null, amount: tile.houseCost, tileId: tile.id });
+      ctx.events.push({
+        type: 'build',
+        playerId: player.id,
+        tileId: tile.id,
+        building: own.houses === 5 ? 'hotel' : 'house',
+        level: own.houses,
+      });
       recordMarketEvent(s, {
         kind: 'build',
         polarity: 'bullish',
@@ -594,8 +614,15 @@ function drawCard(
   if (cardId == null) throw new Error('牌堆空了');
   const card = getCard(cardId);
   if (card.effect.kind !== 'jail-card') pile.push(cardId); // 出狱卡被玩家保留
-  ctx.events.push({ type: 'card', deck, text: card.text, playerId: player.id });
-  log(s, `${player.name} 抽到${deck === 'chance' ? '机会' : '宝箱'}卡:「${card.text}」`);
+  const cardText = localizeCardText(card, s.settings.language);
+  const deckName = localizeDeckName(deck, s.settings.language);
+  ctx.events.push({ type: 'card', deck, text: cardText, playerId: player.id });
+  log(s, pickLanguage(
+    s.settings.language,
+    `${player.name} 抽到${deckName}卡:「${cardText}」`,
+    `${player.name} drew a ${deckName} card: "${cardText}"`,
+    `${player.name} pioche une carte ${deckName}: « ${cardText} »`,
+  ));
   applyCardEffect(s, ctx, player, card, diceSum);
 }
 
@@ -604,8 +631,13 @@ function queueCardDraw(
 ): void {
   const tile = getTile(player.position);
   s.pendingCard = { playerId: player.id, deck, diceSum, tileId: tile.id };
-  const deckName = deck === 'chance' ? '机会' : '宝箱';
-  log(s, `${player.name} 来到${deckName}格, 请在手机上亲手抽一张${deckName}卡`);
+  const deckName = localizeDeckName(deck, s.settings.language);
+  log(s, pickLanguage(
+    s.settings.language,
+    `${player.name} 来到${deckName}格, 请在手机上亲手抽一张${deckName}卡`,
+    `${player.name} landed on ${deckName}; draw a ${deckName} card on the phone`,
+    `${player.name} arrive sur ${deckName}; piochez une carte ${deckName} sur le téléphone`,
+  ));
 }
 
 function applyCardEffect(

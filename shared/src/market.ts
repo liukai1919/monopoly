@@ -1,7 +1,11 @@
 import { BOARD } from './board';
+import {
+  DEFAULT_LANGUAGE, INDUSTRY_NAMES_I18N, localizeIndustryName, localizeMarketName, localizeOpponentLabel,
+  localizePlayerLabel, localizeTileName,
+} from './i18n';
 import { STOCK_INITIAL_PRICE_CENTS, roundSignal, smoothSignal } from './pricingEngine';
 import type {
-  EtfId, EtfState, GameState, IndustryScoreMap, IndustryTag, MarketEvent,
+  EtfId, EtfState, GameState, IndustryScoreMap, IndustryTag, Language, MarketEvent,
   MarketEventKind, MarketPolarity, MarketState, Portfolio,
 } from './types';
 
@@ -18,16 +22,7 @@ export const ALL_INDUSTRIES: IndustryTag[] = [
   'industrial',
 ];
 
-export const INDUSTRY_NAMES: Record<IndustryTag, string> = {
-  realEstate: '地产',
-  finance: '金融',
-  energy: '能源',
-  tech: '科技',
-  logistics: '物流交通',
-  utilities: '公用事业',
-  tourism: '旅游文化',
-  industrial: '工业工程',
-};
+export const INDUSTRY_NAMES: Record<IndustryTag, string> = INDUSTRY_NAMES_I18N.zh;
 
 export const ETF_DEFINITIONS: Record<EtfId, Omit<EtfState, 'priceCents' | 'lastPriceCents' | 'historyCents'>> = {
   'CAN-REAL': { id: 'CAN-REAL', name: '加拿大地产 ETF', industries: ['realEstate'] },
@@ -135,17 +130,18 @@ function toMarketEvent(
   const tile = input.tileId != null ? BOARD[input.tileId] : undefined;
   const player = input.playerId ? s.players.find((p) => p.id === input.playerId) : undefined;
   const affected = input.affectedPlayerId ? s.players.find((p) => p.id === input.affectedPlayerId) : undefined;
+  const language = s.settings?.language ?? DEFAULT_LANGUAGE;
   const eventId = s.market.nextEventId ?? s.market.recentEvents.length + 1;
   s.market.nextEventId = eventId + 1;
   const id = `m-${eventId}`;
   const context = {
-    industry: INDUSTRY_NAMES[industry],
-    city: tile?.name ?? '市场',
-    player: player?.name ?? '玩家',
-    affected: affected?.name ?? '对手',
-    amount: input.amount ? `$${input.amount}` : '',
+    industry: localizeIndustryName(industry, language),
+    city: tile ? localizeTileName(tile, language) : localizeMarketName(language),
+    player: player?.name ?? localizePlayerLabel(language),
+    affected: affected?.name ?? localizeOpponentLabel(language),
+    amount: input.amount ? formatMarketAmount(input.amount, language) : '',
   };
-  const { headline, driverText } = marketCopy(input.kind, input.polarity, context);
+  const { headline, driverText } = marketCopy(input.kind, input.polarity, context, language);
   return {
     id,
     turn: s.turnCount,
@@ -167,8 +163,159 @@ function marketCopy(
   kind: MarketEventKind,
   polarity: MarketPolarity,
   c: { industry: string; city: string; player: string; affected: string; amount: string },
+  language: Language,
 ): { headline: string; driverText: string } {
   const amount = c.amount ? ` ${c.amount}` : '';
+  if (language === 'en') {
+    switch (kind) {
+      case 'property-bought':
+        return {
+          headline: `Capital flows into ${c.city}; ${c.industry} gains attention`,
+          driverText: `${c.player} bought ${c.city}, lifting ${c.industry} demand`,
+        };
+      case 'rent-paid':
+        return {
+          headline: `${c.city} rent income rises; ${c.industry} strengthens`,
+          driverText: `${c.affected} paid rent at ${c.city}${amount}`,
+        };
+      case 'railroad-rent':
+        return {
+          headline: 'Rail traffic strengthens; CAN-LOGI gains momentum',
+          driverText: `${c.affected} paid railroad rent${amount}`,
+        };
+      case 'utility-rent':
+        return {
+          headline: 'Utility cash flow improves; CAN-UTIL finds support',
+          driverText: `${c.affected} paid utility fees${amount}`,
+        };
+      case 'build':
+        return {
+          headline: `${c.city} development upgrades lift real estate demand`,
+          driverText: `${c.player} invested in construction at ${c.city}${amount}`,
+        };
+      case 'sell-house':
+        return {
+          headline: 'Property selling pressure weighs on real estate',
+          driverText: `${c.player} sold buildings at ${c.city}${amount}`,
+        };
+      case 'mortgage':
+        return {
+          headline: 'Mortgage demand rises; credit risk weighs on finance',
+          driverText: `${c.player} mortgaged ${c.city} for cash${amount}`,
+        };
+      case 'unmortgage':
+        return {
+          headline: 'Mortgage redemptions rise; finance sentiment improves',
+          driverText: `${c.player} unmortgaged ${c.city}${amount}`,
+        };
+      case 'tax-paid':
+        return {
+          headline: 'Taxes drain cash from the board; liquidity tightens',
+          driverText: `${c.player} paid ${c.city}${amount}`,
+        };
+      case 'bankruptcy':
+        return {
+          headline: 'Bankruptcy shocks credit markets; finance comes under pressure',
+          driverText: `${c.player} declared bankruptcy, raising bad-debt concerns`,
+        };
+      case 'etf-bought':
+        return {
+          headline: `${c.industry} ETF sees buying inflows`,
+          driverText: `${c.player} bought ${c.industry} ETF${amount}`,
+        };
+      case 'etf-sold':
+        return {
+          headline: `${c.industry} ETF sees profit-taking`,
+          driverText: `${c.player} sold ${c.industry} ETF${amount}`,
+        };
+      case 'etf-forced-sold':
+        return {
+          headline: `${c.industry} ETF faces forced-selling pressure`,
+          driverText: `${c.player} fire-sold ${c.industry} ETF to cover debt${amount}`,
+        };
+      default:
+        return {
+          headline: polarity === 'bullish' ? `${c.industry} gets a boost` : `${c.industry} comes under pressure`,
+          driverText: `${c.player}'s action moved ${c.industry}`,
+        };
+    }
+  }
+
+  if (language === 'fr') {
+    switch (kind) {
+      case 'property-bought':
+        return {
+          headline: `Les capitaux affluent vers ${c.city}; le secteur ${c.industry} attire l’attention`,
+          driverText: `${c.player} achète ${c.city}, ce qui stimule la demande en ${c.industry}`,
+        };
+      case 'rent-paid':
+        return {
+          headline: `Les loyers de ${c.city} montent; le secteur ${c.industry} se renforce`,
+          driverText: `${c.affected} paie un loyer à ${c.city}${amount}`,
+        };
+      case 'railroad-rent':
+        return {
+          headline: 'Le trafic ferroviaire progresse; CAN-LOGI gagne de l’élan',
+          driverText: `${c.affected} paie un loyer ferroviaire${amount}`,
+        };
+      case 'utility-rent':
+        return {
+          headline: 'Les flux des services publics s’améliorent; CAN-UTIL est soutenu',
+          driverText: `${c.affected} paie des frais de services publics${amount}`,
+        };
+      case 'build':
+        return {
+          headline: `Le développement de ${c.city} stimule la demande immobilière`,
+          driverText: `${c.player} investit dans la construction à ${c.city}${amount}`,
+        };
+      case 'sell-house':
+        return {
+          headline: 'Les ventes de bâtiments pèsent sur l’immobilier',
+          driverText: `${c.player} vend des bâtiments à ${c.city}${amount}`,
+        };
+      case 'mortgage':
+        return {
+          headline: 'La demande de prêts hypothécaires monte; la finance subit la pression du risque',
+          driverText: `${c.player} hypothèque ${c.city} pour obtenir des liquidités${amount}`,
+        };
+      case 'unmortgage':
+        return {
+          headline: 'Les rachats d’hypothèques augmentent; le sentiment financier s’améliore',
+          driverText: `${c.player} lève l’hypothèque sur ${c.city}${amount}`,
+        };
+      case 'tax-paid':
+        return {
+          headline: 'Les taxes retirent des liquidités du plateau',
+          driverText: `${c.player} paie ${c.city}${amount}`,
+        };
+      case 'bankruptcy':
+        return {
+          headline: 'Une faillite secoue le crédit; la finance est sous pression',
+          driverText: `${c.player} déclare faillite, alimentant les craintes de créances douteuses`,
+        };
+      case 'etf-bought':
+        return {
+          headline: `Le FNB ${c.industry} reçoit des achats`,
+          driverText: `${c.player} achète le FNB ${c.industry}${amount}`,
+        };
+      case 'etf-sold':
+        return {
+          headline: `Le FNB ${c.industry} subit des prises de bénéfices`,
+          driverText: `${c.player} vend le FNB ${c.industry}${amount}`,
+        };
+      case 'etf-forced-sold':
+        return {
+          headline: `Le FNB ${c.industry} subit une vente forcée`,
+          driverText: `${c.player} vend en urgence le FNB ${c.industry} pour payer sa dette${amount}`,
+        };
+      default:
+        return {
+          headline: polarity === 'bullish' ? `${c.industry} reçoit une impulsion` : `${c.industry} est sous pression`,
+          driverText: `L’action de ${c.player} influence ${c.industry}`,
+        };
+    }
+  }
+
   switch (kind) {
     case 'property-bought':
       return {
@@ -241,6 +388,10 @@ function marketCopy(
         driverText: `${c.player} 的行动影响了${c.industry}`,
       };
   }
+}
+
+function formatMarketAmount(amount: number, language: Language): string {
+  return language === 'fr' ? `${amount} $` : `$${amount}`;
 }
 
 function unique<T>(items: T[]): T[] {

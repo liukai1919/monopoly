@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import type { Action, GameEvent, GameState } from '@monopoly/shared';
+import type { Action, GameEvent, GameState, Language } from '@monopoly/shared';
 
 export const socket = io();
 
@@ -10,9 +10,12 @@ export interface LobbyPlayer {
 
 export interface RoomSnapshot {
   code: string;
+  language: Language;
   lobby: LobbyPlayer[];
   game: GameState | null;
   events: GameEvent[];
+  actionLockedUntil: number;
+  actionLockRemainingMs: number;
 }
 
 /** 订阅房间状态; eventsSeq 每次广播自增, 供动画 effect 触发 */

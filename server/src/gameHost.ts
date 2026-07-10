@@ -1,5 +1,7 @@
 import type { Server } from 'socket.io';
-import { applyAction, decideAction, settleGame, whoMustAct } from '@monopoly/shared';
+import {
+  actionBypassesPresentationLock, actionPresentationLockMs, applyAction, decideAction, settleGame, whoMustAct,
+} from '@monopoly/shared';
 import type { Action, GameEvent } from '@monopoly/shared';
 import { touch, type Room } from './rooms';
 
@@ -9,9 +11,12 @@ const AI_THINK_MS = Number(process.env.AI_THINK_MS ?? 700);
 export function broadcast(io: Server, room: Room, events: GameEvent[] = []): void {
   io.to(room.code).emit('room:update', {
     code: room.code,
+    language: room.game?.settings.language ?? room.language,
     lobby: room.lobby,
     game: room.game,
     events,
+    actionLockedUntil: room.actionLockedUntil,
+    actionLockRemainingMs: remainingActionLock(room),
   });
   scheduleAi(io, room);
   scheduleAuctionTimeout(io, room);
@@ -22,6 +27,9 @@ export function applyPlayerAction(
   io: Server, room: Room, playerId: string, action: Action,
 ): string | null {
   if (!room.game) return '游戏尚未开始';
+  if (remainingActionLock(room) > 0 && !actionBypassesPresentationLock(action)) {
+    return '大屏动画还在播放, 稍等一下';
+  }
   let result;
   try {
     result = applyAction(room.game, playerId, action);
@@ -31,23 +39,28 @@ export function applyPlayerAction(
   }
   if (!result.ok) return result.error;
   room.game = result.state;
+  const lockMs = actionPresentationLockMs(result.events, action);
+  if (lockMs > 0 && !actionBypassesPresentationLock(action)) room.actionLockedUntil = Date.now() + lockMs;
   touch(room);
   broadcast(io, room, result.events);
   return null;
 }
 
-
 export function settleRoomGame(io: Server, room: Room): string | null {
-  if (!room.game) return '\u6e38\u620f\u5c1a\u672a\u5f00\u59cb';
+  if (!room.game) return '游戏尚未开始';
+  if (remainingActionLock(room) > 0) return '大屏动画还在播放, 稍等一下';
 
   const result = settleGame(room.game);
   if (!result.ok) return result.error;
 
   room.game = result.state;
+  const lockMs = actionPresentationLockMs(result.events, { type: 'end-turn' });
+  if (lockMs > 0) room.actionLockedUntil = Date.now() + lockMs;
   touch(room);
   broadcast(io, room, result.events);
   return null;
 }
+
 /** 轮到 AI 时, 延迟一小会儿执行, 让真人看得清节奏 */
 function scheduleAi(io: Server, room: Room): void {
   if (room.aiTimer) {
@@ -56,6 +69,15 @@ function scheduleAi(io: Server, room: Room): void {
   }
   const game = room.game;
   if (!game || game.phase === 'game-over') return;
+
+  const lockRemaining = remainingActionLock(room);
+  if (lockRemaining > 0) {
+    room.aiTimer = setTimeout(() => {
+      room.aiTimer = null;
+      scheduleAi(io, room);
+    }, lockRemaining + 60);
+    return;
+  }
 
   const actors = new Set(whoMustAct(game));
   if (game.trade) actors.add(game.trade.to);
@@ -87,6 +109,15 @@ function scheduleAuctionTimeout(io: Server, room: Room): void {
   const game = room.game;
   if (!game || game.phase !== 'auction' || !game.auction) return;
 
+  const lockRemaining = remainingActionLock(room);
+  if (lockRemaining > 0) {
+    room.auctionTimer = setTimeout(() => {
+      room.auctionTimer = null;
+      scheduleAuctionTimeout(io, room);
+    }, lockRemaining + 60);
+    return;
+  }
+
   const delay = Math.max(500, game.auction.deadline - Date.now() + 300);
   room.auctionTimer = setTimeout(() => {
     room.auctionTimer = null;
@@ -98,4 +129,8 @@ function scheduleAuctionTimeout(io: Server, room: Room): void {
     }
     applyPlayerAction(io, room, g.auction.turn, { type: 'pass-bid' });
   }, delay);
+}
+
+function remainingActionLock(room: Room): number {
+  return Math.max(0, room.actionLockedUntil - Date.now());
 }

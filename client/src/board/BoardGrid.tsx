@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
-import type { GameState, Tile } from '@monopoly/shared';
+import type { GameState, Language, Tile } from '@monopoly/shared';
+import { localizeTileInstruction, localizeTileName, tr } from '../i18n';
 
 /** 一笔正在飞行的钱; fromTile/toTile 为 null 表示银行(棋盘中央) */
 export interface MoneyFxItem {
@@ -8,6 +9,11 @@ export interface MoneyFxItem {
   fromTile: number | null;
   toTile: number | null;
   amount: number;
+}
+export interface ConstructionFxItem {
+  id: number;
+  tileId: number;
+  building: 'house' | 'hotel';
 }
 
 /** 40 格在 11×11 网格中的位置 (1-indexed) */
@@ -37,16 +43,19 @@ function tileIcon(tile: Tile): string {
 }
 
 export default function BoardGrid({
-  game, positions, rollingPlayerId, diceRolling, moneyFx, landedFx, children,
+  game, language, positions, rollingPlayerId, diceRolling, moneyFx, constructionFx, landedFx, children,
 }: {
   game: GameState;
+  language: Language;
   positions: Record<string, number>;
   rollingPlayerId?: string | null;
   diceRolling?: boolean;
   moneyFx?: MoneyFxItem[];
+  constructionFx?: ConstructionFxItem[];
   landedFx?: { tile: number; id: number } | null;
   children?: ReactNode;
 }) {
+  const hasFx = (moneyFx && moneyFx.length > 0) || (constructionFx && constructionFx.length > 0);
   return (
     <div className="board-grid">
       {BOARD.map((tile) => (
@@ -54,6 +63,7 @@ export default function BoardGrid({
           key={tile.id}
           tile={tile}
           game={game}
+          language={language}
           positions={positions}
           rollingPlayerId={rollingPlayerId}
           diceRolling={diceRolling}
@@ -61,9 +71,10 @@ export default function BoardGrid({
         />
       ))}
       <div className="board-center">{children}</div>
-      {moneyFx && moneyFx.length > 0 && (
+      {hasFx && (
         <div className="board-fx-layer">
-          {moneyFx.map((fx) => <MoneyFly key={fx.id} fx={fx} />)}
+          {moneyFx?.map((fx) => <MoneyFly key={fx.id} fx={fx} />)}
+          {constructionFx?.map((fx) => <ConstructionBurst key={fx.id} fx={fx} />)}
         </div>
       )}
     </div>
@@ -102,9 +113,31 @@ function MoneyFly({ fx }: { fx: MoneyFxItem }) {
   );
 }
 
-function TileView({ tile, game, positions, rollingPlayerId, diceRolling, landedId }: {
+function ConstructionBurst({ fx }: { fx: ConstructionFxItem }) {
+  const center = tileCenterPct(fx.tileId);
+  const style = {
+    '--tx': `${center.x}%`,
+    '--ty': `${center.y}%`,
+  } as CSSProperties;
+  return (
+    <div className={`construction-burst construction-${fx.building}`} style={style}>
+      <span className="construction-ring" />
+      <span className="construction-spark construction-spark-a">✦</span>
+      <span className="construction-spark construction-spark-b">✧</span>
+      <span className="construction-tools">🏗️</span>
+      <img
+        className="construction-building"
+        src={fx.building === 'hotel' ? '/assets/hotel.svg' : '/assets/house.svg'}
+        alt=""
+      />
+    </div>
+  );
+}
+
+function TileView({ tile, game, language, positions, rollingPlayerId, diceRolling, landedId }: {
   tile: Tile;
   game: GameState;
+  language: Language;
   positions: Record<string, number>;
   rollingPlayerId?: string | null;
   diceRolling?: boolean;
@@ -114,6 +147,8 @@ function TileView({ tile, game, positions, rollingPlayerId, diceRolling, landedI
   const side = tileSide(tile.id);
   const own = game.ownership[tile.id];
   const owner = own?.owner ? game.players.find((p) => p.id === own.owner) : null;
+  const name = localizeTileName(tile, language);
+  const instruction = localizeTileInstruction(tile, language);
   const tokens = game.players.filter(
     (p) => !p.bankrupt && (positions[p.id] ?? p.position) === tile.id,
   );
@@ -121,7 +156,7 @@ function TileView({ tile, game, positions, rollingPlayerId, diceRolling, landedI
   return (
     <div
       className={`tile tile-${side} ${own?.mortgaged ? 'tile-mortgaged' : ''}`}
-      title={`${tile.name}: ${tile.instruction}`}
+      title={`${name}: ${instruction}`}
       style={{
         gridRow: row,
         gridColumn: col,
@@ -132,18 +167,22 @@ function TileView({ tile, game, positions, rollingPlayerId, diceRolling, landedI
       {tile.type === 'property' && (
         <div className="tile-bar" style={{ background: GROUP_COLORS[tile.group] }}>
           {own && own.houses > 0 && (
-            <span className="tile-houses">
-              {own.houses === 5 ? '🏨' : '▪'.repeat(own.houses)}
+            <span className={`tile-buildings ${own.houses === 5 ? 'tile-buildings-hotel' : ''}`}>
+              {own.houses === 5 ? (
+                <img className="tile-building-img tile-hotel-img" src="/assets/hotel.svg" alt={tr(language, '酒店', 'Hotel', 'Hôtel')} />
+              ) : Array.from({ length: own.houses }, (_, i) => (
+                <img key={i} className="tile-building-img" src="/assets/house.svg" alt={tr(language, '房子', 'House', 'Maison')} />
+              ))}
             </span>
           )}
         </div>
       )}
       <div className="tile-body">
         {tile.type !== 'property' && <div className="tile-icon">{tileIcon(tile)}</div>}
-        <div className="tile-name">{tile.name}</div>
-        <div className="tile-instruction">{tile.instruction}</div>
+        <div className="tile-name">{name}</div>
+        <div className="tile-instruction">{instruction}</div>
         {isOwnable(tile) && !owner && <div className="tile-price">${tile.price}</div>}
-        {own?.mortgaged && <div className="tile-mort-mark">已抵押</div>}
+        {own?.mortgaged && <div className="tile-mort-mark">{tr(language, '已抵押', 'Mortgaged', 'Hypothéqué')}</div>}
       </div>
       {tokens.length > 0 && (
         <div className="tile-tokens">

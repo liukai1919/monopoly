@@ -54,6 +54,13 @@ describe('棋盘与卡牌数据', () => {
   test('每个格子都有 instruction 说明', () => {
     expect(BOARD.every((t) => t.instruction.trim().length > 0)).toBe(true);
   });
+  test('每个格子都有英文和法文名称与说明', () => {
+    expect(BOARD.every((t) =>
+      t.nameEn.trim().length > 0
+      && t.nameFr.trim().length > 0
+      && t.instructionEn.trim().length > 0
+      && t.instructionFr.trim().length > 0)).toBe(true);
+  });
   test('每个可交易经济地块都有产业标签', () => {
     expect(BOARD.filter((t) => isOwnable(t) || t.type === 'tax').every((t) => t.industries.length > 0)).toBe(true);
   });
@@ -68,6 +75,17 @@ describe('棋盘与卡牌数据', () => {
   test('机会/宝箱各 16 张', () => {
     expect(CHANCE_CARDS).toHaveLength(16);
     expect(CHEST_CARDS).toHaveLength(16);
+  });
+  test('所有卡牌都有英文和法文文本', () => {
+    const cards = [...CHANCE_CARDS, ...CHEST_CARDS];
+    expect(cards.every((card) => card.textEn.trim().length > 0 && card.textFr.trim().length > 0)).toBe(true);
+  });
+});
+
+describe('国际化设置', () => {
+  test('创建游戏时保存所选语言', () => {
+    const s = newGame(2, { language: 'fr' });
+    expect(s.settings.language).toBe('fr');
   });
 });
 
@@ -216,6 +234,13 @@ describe('盖房规则', () => {
     return s;
   }
 
+  function withOrange(s: GameState): GameState {
+    s.ownership[16]!.owner = 'a';
+    s.ownership[18]!.owner = 'a';
+    s.ownership[19]!.owner = 'a';
+    return s;
+  }
+
   test('未集齐同色不能盖', () => {
     const s = newGame();
     s.ownership[1]!.owner = 'a';
@@ -224,6 +249,7 @@ describe('盖房规则', () => {
 
   test('必须均衡建造', () => {
     let s = withBrown(newGame());
+    player(s, 'a').position = 1; // 房规: 停在色组上才能盖
     s = mustApply(s, 'a', { type: 'build', tileId: 1 });
     expect(s.ownership[1]!.houses).toBe(1);
     expect(s.housesRemaining).toBe(31);
@@ -234,8 +260,63 @@ describe('盖房规则', () => {
     expect(player(s, 'a').cash).toBe(1500 - 150);
   });
 
+  test('三格色组也必须逐轮均衡建造', () => {
+    let s = withOrange(newGame());
+    player(s, 'a').position = 16;
+    s = mustApply(s, 'a', { type: 'build', tileId: 16 });
+
+    expect(applyAction(s, 'a', { type: 'build', tileId: 16 }).ok).toBe(false);
+    expect(canBuild(s, 'a', 16)).toContain('均衡');
+
+    s = mustApply(s, 'a', { type: 'build', tileId: 18 });
+    expect(applyAction(s, 'a', { type: 'build', tileId: 16 }).ok).toBe(false);
+
+    s = mustApply(s, 'a', { type: 'build', tileId: 19 });
+    s = mustApply(s, 'a', { type: 'build', tileId: 16 });
+
+    expect(s.ownership[16]!.houses).toBe(2);
+    expect(s.ownership[18]!.houses).toBe(1);
+    expect(s.ownership[19]!.houses).toBe(1);
+  });
+
+  test('经典规则允许在对手停留于色组时盖房', () => {
+    let s = withBrown(newGame());
+    player(s, 'a').position = 1;
+    player(s, 'b').position = 3;
+
+    s = mustApply(s, 'a', { type: 'build', tileId: 1 });
+
+    expect(s.ownership[1]!.houses).toBe(1);
+  });
+
+  test('经典规则允许玩家从棋盘任意位置盖房', () => {
+    let s = withBrown(newGame());
+    player(s, 'a').position = 10;
+
+    s = mustApply(s, 'a', { type: 'build', tileId: 1 });
+
+    expect(s.ownership[1]!.houses).toBe(1);
+  });
+
+  test('建房和酒店升级会广播施工动画事件', () => {
+    let s = withBrown(newGame());
+    player(s, 'a').position = 1;
+    let r = applyAction(s, 'a', { type: 'build', tileId: 1 });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'build', playerId: 'a', tileId: 1, building: 'house', level: 1 });
+
+    s = r.state;
+    s.ownership[1]!.houses = 4;
+    s.ownership[3]!.houses = 4;
+    s.housesRemaining = 24;
+    r = applyAction(s, 'a', { type: 'build', tileId: 1 });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.events).toContainEqual({ type: 'build', playerId: 'a', tileId: 1, building: 'hotel', level: 5 });
+  });
+
   test('第五栋升级酒店, 归还 4 栋房', () => {
     let s = withBrown(newGame());
+    player(s, 'a').position = 1;
     s.ownership[1]!.houses = 4;
     s.ownership[3]!.houses = 4;
     s.housesRemaining = 24;
@@ -247,6 +328,7 @@ describe('盖房规则', () => {
 
   test('同色组有抵押不能盖房', () => {
     const s = withBrown(newGame());
+    player(s, 'a').position = 1;
     s.ownership[3]!.mortgaged = true;
     expect(canBuild(s, 'a', 1)).toContain('抵押');
   });
@@ -564,7 +646,7 @@ describe('房规与结算', () => {
     expect(s.winner).toBe('a'); // a 多一块多伦多
   });
 
-  test('host can settle by net worth immediately', () => {
+  test('主持人可以立即按净资产结算', () => {
     const s = newGame(2);
     s.ownership[39]!.owner = 'a';
     s.portfolios.b!['CAN-REAL'] = 1;
@@ -579,7 +661,7 @@ describe('房规与结算', () => {
     expect(s.phase).toBe('awaiting-roll');
   });
 
-  test('host settlement waits for pending decisions', () => {
+  test('还有待处理事项时不能立即结算', () => {
     let s = newGame(2);
     player(s, 'a').position = 38;
     s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2));

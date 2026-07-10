@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { createGame } from '@monopoly/shared';
-import type { DiceStyle } from '@monopoly/shared';
+import { createGame, parseLanguage } from '@monopoly/shared';
+import type { DiceStyle, Language } from '@monopoly/shared';
 import { applyPlayerAction, broadcast, settleRoomGame } from './gameHost';
 import {
   AI_EMOJIS, AI_NAMES, AI_TOKEN_IDS, PLAYER_COLORS, createRoom, getRoom, pickToken, sweepRooms, touch,
@@ -50,8 +50,8 @@ io.on('connection', (socket) => {
   const data = socket.data as SocketData;
 
   // ---- 大屏: 创建房间 ----
-  socket.on('board:create', (_payload: unknown, cb?: (res: { code: string }) => void) => {
-    const room = createRoom();
+  socket.on('board:create', (payload: { language?: Language } | undefined, cb?: (res: { code: string }) => void) => {
+    const room = createRoom(parseLanguage(payload?.language));
     data.code = room.code;
     data.role = 'board';
     void socket.join(room.code);
@@ -163,6 +163,14 @@ io.on('connection', (socket) => {
     broadcast(io, room);
   });
 
+  socket.on('lobby:language', (payload: { code?: string; language?: Language }) => {
+    const room = getRoom(payload?.code ?? data.code);
+    if (!room || room.game) return;
+    room.language = parseLanguage(payload?.language);
+    touch(room);
+    broadcast(io, room);
+  });
+
   // ---- 开局 ----
   socket.on('lobby:start', (
     payload: {
@@ -171,6 +179,7 @@ io.on('connection', (socket) => {
       maxTurns?: number | null;
       diceStyle?: DiceStyle;
       soundEnabled?: boolean;
+      language?: Language;
     },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
@@ -178,6 +187,8 @@ io.on('connection', (socket) => {
     if (!room) return cb?.({ error: '房间不存在' });
     if (room.game && room.game.phase !== 'game-over') return cb?.({ error: '游戏已在进行中' });
     if (room.lobby.length < 2) return cb?.({ error: '至少需要 2 名玩家, 可以添加 AI 凑数' });
+    room.actionLockedUntil = 0;
+    room.language = parseLanguage(payload?.language ?? room.language);
     try {
       room.game = createGame(
         room.lobby.map((p) => ({
@@ -193,6 +204,7 @@ io.on('connection', (socket) => {
           maxTurns: payload?.maxTurns && payload.maxTurns > 0 ? payload.maxTurns : null,
           diceStyle: payload?.diceStyle ?? 'classic',
           soundEnabled: payload?.soundEnabled ?? true,
+          language: room.language,
         },
       );
       for (const gp of room.game.players) {
@@ -211,7 +223,9 @@ io.on('connection', (socket) => {
   socket.on('lobby:reset', (payload: { code?: string }) => {
     const room = getRoom(payload?.code ?? data.code);
     if (!room || (room.game && room.game.phase !== 'game-over')) return;
+    if (room.game) room.language = room.game.settings.language;
     room.game = null;
+    room.actionLockedUntil = 0;
     touch(room);
     broadcast(io, room);
   });
@@ -228,17 +242,17 @@ io.on('connection', (socket) => {
     cb?.(error ? { error } : { ok: true });
   });
 
-
   socket.on('game:settle', (
     payload: { code?: string },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
     const room = getRoom(payload?.code ?? data.code);
-    if (!room) return cb?.({ error: '\u623f\u95f4\u4e0d\u5b58\u5728\u6216\u5df2\u8fc7\u671f' });
-    if (data.role !== 'board') return cb?.({ error: '\u53ea\u6709\u5927\u5c4f\u53ef\u4ee5\u53d1\u8d77\u7ed3\u7b97' });
+    if (!room) return cb?.({ error: '房间不存在或已过期' });
+    if (data.role !== 'board') return cb?.({ error: '只有大屏可以发起结算' });
     const error = settleRoomGame(io, room);
     cb?.(error ? { error } : { ok: true });
   });
+
   // ---- 断线: 只标记, 不移除, 等待重连 ----
   socket.on('disconnect', () => {
     const room = getRoom(data.code);
