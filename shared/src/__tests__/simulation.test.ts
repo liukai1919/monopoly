@@ -78,7 +78,8 @@ describe('AI 自动对局模拟', () => {
       let finishedByBankruptcy = 0;
       for (let game = 0; game < 100; game++) {
         const rng = mulberry32(1000 + game);
-        let s = createGame(AI_SEATS, { maxTurns: 500 }, rng);
+        // 一半局开行业景气房规: 50 局基线回归 + 50 局在 +50% 租金下压不变量
+        let s = createGame(AI_SEATS, { maxTurns: 500, industryBoom: game % 2 === 1 }, rng);
         let step = 0;
 
         while (s.phase !== 'game-over') {

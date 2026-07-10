@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { GROUP_COLORS, PRESENTATION_TIMING_MS, getPlayerToken, presentationForGameEvent } from '@monopoly/shared';
+import {
+  GROUP_COLORS, PRESENTATION_TIMING_MS, getPlayerToken, getTile, isOwnable, presentationForGameEvent,
+} from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import type { RoomSnapshot } from '../api';
@@ -80,6 +82,7 @@ export default function Board() {
   const [constructionFx, setConstructionFx] = useState<ConstructionFxItem[]>([]);
   const [cashFloats, setCashFloats] = useState<{ id: number; playerId: string; delta: number }[]>([]);
   const [landedFx, setLandedFx] = useState<{ tile: number; id: number } | null>(null);
+  const [deedCard, setDeedCard] = useState<{ tileId: number; id: number } | null>(null);
   const [bankruptFx, setBankruptFx] = useState<{ name: string; emoji: string } | null>(null);
   const [monopolyFx, setMonopolyFx] = useState<{ name: string; groupName: string; color: string } | null>(null);
   const [turnSplash, setTurnSplash] = useState<{
@@ -173,6 +176,7 @@ export default function Board() {
         setConstructionFx([]);
         setCashFloats([]);
         setLandedFx(null);
+        setDeedCard(null);
         setBankruptFx(null);
         setMonopolyFx(null);
       }
@@ -221,7 +225,15 @@ export default function Board() {
           await sleep(presentation.settleMs);
         }
         const dest = event.path[event.path.length - 1];
-        if (dest != null) setLandedFx({ tile: dest, id: ++fxIdRef.current });
+        if (dest != null) {
+          setLandedFx({ tile: dest, id: ++fxIdRef.current });
+          // 落格自动亮出该格地契卡 (非阻塞; 新落格顶掉旧卡, id 守卫防旧定时器误关新卡)
+          if (isOwnable(getTile(dest))) {
+            const deedId = ++fxIdRef.current;
+            setDeedCard({ tileId: dest, id: deedId });
+            setTimeout(() => setDeedCard((c) => (c?.id === deedId ? null : c)), 3800);
+          }
+        }
       } else if (presentation.kind === 'card') {
         setCardFlash({ deck: presentation.event.deck, text: presentation.event.text });
         await sleep(presentation.visibleMs);
@@ -366,6 +378,7 @@ export default function Board() {
             diceRolling={diceRolling}
             rollingPlayerId={rollingPlayerId}
             cardFlash={cardFlash}
+            deedCard={deedCard}
           />
         </BoardGrid>
         {bankruptFx && (
@@ -576,6 +589,7 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
   onLanguageChange: (language: Language) => void;
 }) {
   const [freeParkingPot, setFreeParkingPot] = useState(false);
+  const [industryBoom, setIndustryBoom] = useState(true);
   const [maxTurns, setMaxTurns] = useState<number>(0);
   const [diceStyle, setDiceStyle] = useState<DiceStyle>('classic');
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -583,7 +597,7 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
 
   async function start() {
     const res = await emitAck('lobby:start', {
-      code, freeParkingPot, maxTurns: maxTurns || null, diceStyle, soundEnabled, language,
+      code, freeParkingPot, industryBoom, maxTurns: maxTurns || null, diceStyle, soundEnabled, language,
     });
     if (res?.error) setStartError(localizeMessage(res.error, language));
   }
@@ -644,6 +658,19 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
                 '免费停车奖池 (房规: 税款入池, 踩中全拿)',
                 'Free Parking pot (taxes go into the pot)',
                 'Cagnotte Stationnement gratuit (les taxes vont dans la cagnotte)',
+              )}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={industryBoom}
+                onChange={(e) => setIndustryBoom(e.target.checked)}
+              />
+              {tr(
+                language,
+                '行业景气 (房规: 每轮景气行业租金 +50%, 跟随市场信号轮换)',
+                'Industry boom (booming industry rents +50%, rotates with market signals)',
+                'Essor sectoriel (loyers du secteur en essor +50%, suit les signaux du marché)',
               )}
             </label>
             <label>

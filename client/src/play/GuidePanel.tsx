@@ -3,7 +3,8 @@ import {
   railroadsOwned, utilitiesOwned,
 } from '@monopoly/shared';
 import type { GameState, Language } from '@monopoly/shared';
-import { localizeGroupName, localizeTileInstruction, localizeTileName, tr } from '../i18n';
+import { isBoomTile } from '../board/deedInfo';
+import { localizeGroupName, localizeIndustryName, localizeTileInstruction, localizeTileName, tr } from '../i18n';
 
 export default function GuidePanel({ game, language, meId }: { game: GameState; language: Language; meId: string }) {
   const me = game.players.find((p) => p.id === meId)!;
@@ -48,6 +49,9 @@ export default function GuidePanel({ game, language, meId }: { game: GameState; 
             {tile.type === 'property' && <div><span>{tr(language, '酒店租金', 'Hotel rent', 'Loyer hôtel')}</span><b>${tile.rent[5]}</b></div>}
             {tile.type === 'railroad' && <div><span>{tr(language, '铁路租金', 'Railroad rent', 'Loyer ferroviaire')}</span><b>$25-$200</b></div>}
             {tile.type === 'utility' && <div><span>{tr(language, '公用事业租金', 'Utility rent', 'Loyer service')}</span><b>{tr(language, '骰点×4/10', 'dice ×4/10', 'dés ×4/10')}</b></div>}
+            {isBoomTile(game, tile.id) && (
+              <div><span>{tr(language, '行业景气', 'Industry boom', 'Essor sectoriel')}</span><b>🔥 {tr(language, '租金 +50%', 'Rent +50%', 'Loyer +50%')}</b></div>
+            )}
           </div>
         )}
       </section>
@@ -61,6 +65,12 @@ export default function GuidePanel({ game, language, meId }: { game: GameState; 
           <div><span>{tr(language, '出狱卡', 'Jail Cards', 'Cartes prison')}</span><b>{tr(language, `${me.jailCards.length} 张`, `${me.jailCards.length}`, `${me.jailCards.length}`)}</b></div>
           <div><span>{tr(language, '铁路', 'Railroads', 'Chemins de fer')}</span><b>{railroadsOwned(game, meId)}</b></div>
           <div><span>{tr(language, '公用事业', 'Utilities', 'Services publics')}</span><b>{utilitiesOwned(game, meId)}</b></div>
+          {game.settings.industryBoom && game.boomIndustry && (
+            <div>
+              <span>{tr(language, '本轮景气', 'Boom this round', 'Essor du tour')}</span>
+              <b>🔥 {localizeIndustryName(game.boomIndustry, language)}</b>
+            </div>
+          )}
         </div>
         {fullGroups.length > 0 ? (
           <div className="guide-groups">

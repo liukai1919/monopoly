@@ -151,7 +151,8 @@ export type MarketEventKind =
   | 'bankruptcy'
   | 'etf-bought'
   | 'etf-sold'
-  | 'etf-forced-sold';
+  | 'etf-forced-sold'
+  | 'industry-boom';
 
 export type IndustryScoreMap = Record<IndustryTag, number>;
 export type Portfolio = Record<EtfId, number>;
@@ -198,6 +199,8 @@ export interface GameSettings {
   diceStyle: DiceStyle;
   soundEnabled: boolean;
   language: Language;
+  /** 房规: 每轮景气行业, 相关地块租金 ×1.5。引擎默认关 (保测试基线), 大厅默认勾选开 */
+  industryBoom: boolean;
 }
 
 export interface LogEntry { text: string; ts: number; }
@@ -261,6 +264,7 @@ export interface GameState {
   chestDeck: number[];
   pot: number;                  // 免费停车奖池
   market: MarketState;
+  boomIndustry: IndustryTag | null;   // 本轮景气行业 (industryBoom 房规)
   portfolios: Record<string, Portfolio>;
   turnCount: number;
   winner: string | null;

@@ -975,3 +975,114 @@ describe('终局统计', () => {
     expect(report.superlatives).toHaveLength(0);
   });
 });
+
+describe('行业景气房规', () => {
+  function boomGame(boom: Parameters<typeof createGame>[1] = { industryBoom: true }) {
+    return newGame(2, boom);
+  }
+
+  test('地产租金 ×1.5: 基础 / 垄断×2后 / 带房', () => {
+    const s = boomGame();
+    s.ownership[1]!.owner = 'b'; // 圣约翰斯: logistics+tourism, rent [2,10,30,...]
+    s.boomIndustry = 'tourism';
+    expect(computeRent(s, 1, 7)).toBe(3); // round(2×1.5)
+
+    s.ownership[3]!.owner = 'b'; // 集齐棕色 → 基础×2 后再 ×1.5
+    expect(computeRent(s, 1, 7)).toBe(6);
+
+    s.ownership[1]!.houses = 2;
+    expect(computeRent(s, 1, 7)).toBe(45); // round(30×1.5)
+  });
+
+  test('铁路与公用租金 ×1.5 (含卡牌加倍)', () => {
+    const s = boomGame();
+    s.ownership[5]!.owner = 'b';
+    s.boomIndustry = 'logistics';
+    expect(computeRent(s, 5, 7)).toBe(38); // round(25×1.5)
+    expect(computeRent(s, 5, 7, { railDouble: true })).toBe(75);
+
+    s.ownership[12]!.owner = 'b';
+    s.boomIndustry = 'utilities';
+    expect(computeRent(s, 12, 7)).toBe(42); // round(7×4×1.5)
+    expect(computeRent(s, 12, 7, { utilTen: true })).toBe(105);
+  });
+
+  test('负门控: 开关关 / 无景气 / 行业不匹配 / 抵押', () => {
+    const off = newGame();
+    off.ownership[1]!.owner = 'b';
+    off.boomIndustry = 'tourism'; // 开关没开 → 不生效
+    expect(computeRent(off, 1, 7)).toBe(2);
+
+    const s = boomGame();
+    s.ownership[1]!.owner = 'b';
+    expect(computeRent(s, 1, 7)).toBe(2); // boomIndustry null
+
+    s.boomIndustry = 'finance'; // 圣约翰斯没有 finance 标签
+    expect(computeRent(s, 1, 7)).toBe(2);
+
+    s.boomIndustry = 'tourism';
+    s.ownership[1]!.mortgaged = true;
+    expect(computeRent(s, 1, 7)).toBe(0);
+  });
+
+  test('轮边界按最强信号选景气, 并播报行情事件', () => {
+    let s = boomGame();
+    s.market.signals.tech = 5;
+    player(s, 'a').position = 16;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 3)); // → 20 免费停车
+    s = mustApply(s, 'a', { type: 'end-turn' });
+    expect(s.boomIndustry).toBeNull(); // 半轮不选
+    player(s, 'b').position = 16;
+    s = mustApply(s, 'b', { type: 'roll' }, diceRng(1, 3));
+    s = mustApply(s, 'b', { type: 'end-turn' }); // 整轮 → 选景气
+    expect(s.boomIndustry).toBe('tech');
+    expect(s.log.some((l) => l.text.includes('景气'))).toBe(true);
+    expect(s.market.recentEvents.at(-1)?.kind).toBe('industry-boom');
+  });
+
+  test('全零信号无景气; 开关关恒 null; 平局按声明顺序取先', () => {
+    let s = boomGame();
+    player(s, 'a').position = 16;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 3));
+    s = mustApply(s, 'a', { type: 'end-turn' });
+    player(s, 'b').position = 16;
+    s = mustApply(s, 'b', { type: 'roll' }, diceRng(1, 3));
+    s = mustApply(s, 'b', { type: 'end-turn' });
+    expect(s.boomIndustry).toBeNull();
+    expect(s.market.recentEvents.at(-1)?.kind).not.toBe('industry-boom');
+
+    let off = newGame();
+    off.market.signals.tech = 5;
+    player(off, 'a').position = 16;
+    off = mustApply(off, 'a', { type: 'roll' }, diceRng(1, 3));
+    off = mustApply(off, 'a', { type: 'end-turn' });
+    player(off, 'b').position = 16;
+    off = mustApply(off, 'b', { type: 'roll' }, diceRng(1, 3));
+    off = mustApply(off, 'b', { type: 'end-turn' });
+    expect(off.boomIndustry).toBeNull();
+
+    // 平局: signals 直接喂给引擎选取逻辑 (settleMarketRound 平滑对相等值同样处理)
+    let tie = boomGame();
+    tie.market.signals.realEstate = 4;
+    tie.market.signals.tech = 4;
+    player(tie, 'a').position = 16;
+    tie = mustApply(tie, 'a', { type: 'roll' }, diceRng(1, 3));
+    tie = mustApply(tie, 'a', { type: 'end-turn' });
+    player(tie, 'b').position = 16;
+    tie = mustApply(tie, 'b', { type: 'roll' }, diceRng(1, 3));
+    tie = mustApply(tie, 'b', { type: 'end-turn' });
+    expect(tie.boomIndustry).toBe('realEstate'); // ALL_INDUSTRIES 声明顺序在 tech 之前
+  });
+
+  test('端到端: 踩景气地实际按加成扣款, 租金守恒不破', () => {
+    let s = boomGame();
+    s.ownership[39]!.owner = 'b'; // 多伦多: finance+realEstate, 基础租 50
+    s.boomIndustry = 'finance';
+    player(s, 'a').position = 36;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 39
+    expect(player(s, 'a').cash).toBe(1500 - 75); // round(50×1.5)
+    expect(player(s, 'b').cash).toBe(1500 + 75);
+    expect(s.stats.players.a!.rentPaid).toBe(75);
+    expect(s.stats.players.b!.rentReceived).toBe(75);
+  });
+});

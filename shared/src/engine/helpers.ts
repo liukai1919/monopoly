@@ -39,6 +39,12 @@ export function utilitiesOwned(s: GameState, playerId: string): number {
   return BOARD.filter((t) => t.type === 'utility' && s.ownership[t.id]?.owner === playerId).length;
 }
 
+/** 房规「行业景气」: tileId 是否属于本轮景气行业 (租金 ×1.5, 棋盘点亮 🔥) */
+export function isBoomTile(s: GameState, tileId: number): boolean {
+  if (!s.settings.industryBoom || !s.boomIndustry) return false;
+  return getTile(tileId).industries.includes(s.boomIndustry);
+}
+
 /**
  * 落在 tileId 上应付的租金。
  * railDouble: 机会卡"最近铁路"双倍; utilTen: 机会卡"最近公用事业"固定 10 倍骰点
@@ -51,21 +57,23 @@ export function computeRent(
   const own = s.ownership[tileId];
   if (!own || !own.owner || own.mortgaged) return 0;
 
+  let base = 0;
   if (tile.type === 'property') {
-    if (own.houses > 0) return tile.rent[own.houses] ?? 0;
-    const monopoly = ownsFullGroup(s, own.owner, tile.group);
-    return monopoly ? tile.rent[0] * 2 : tile.rent[0];
-  }
-  if (tile.type === 'railroad') {
+    if (own.houses > 0) {
+      base = tile.rent[own.houses] ?? 0;
+    } else {
+      base = ownsFullGroup(s, own.owner, tile.group) ? tile.rent[0] * 2 : tile.rent[0];
+    }
+  } else if (tile.type === 'railroad') {
     const n = railroadsOwned(s, own.owner);
-    const base = 25 * 2 ** (n - 1);
-    return opts.railDouble ? base * 2 : base;
+    base = 25 * 2 ** (n - 1);
+    if (opts.railDouble) base *= 2;
+  } else if (tile.type === 'utility') {
+    if (opts.utilTen) base = diceSum * 10;
+    else base = utilitiesOwned(s, own.owner) === 2 ? diceSum * 10 : diceSum * 4;
   }
-  if (tile.type === 'utility') {
-    if (opts.utilTen) return diceSum * 10;
-    return utilitiesOwned(s, own.owner) === 2 ? diceSum * 10 : diceSum * 4;
-  }
-  return 0;
+
+  return isBoomTile(s, tileId) ? Math.round(base * 1.5) : base;
 }
 
 /** 抵押可得金额 */

@@ -3,6 +3,7 @@ import {
   mortgageValue, playerProperties, unmortgageCost,
 } from '@monopoly/shared';
 import type { Action, GameState, Language } from '@monopoly/shared';
+import { currentRentTierIndex, isBoomTile, rentRows } from '../board/deedInfo';
 import { localizeGroupName, localizeTileInstruction, localizeTileName, tr } from '../i18n';
 
 export default function AssetsPanel({ game, language, meId, act }: {
@@ -59,12 +60,18 @@ export default function AssetsPanel({ game, language, meId, act }: {
                 </span>
               )}
               {own.mortgaged && <span className="tag tag-warn">{tr(language, '已抵押', 'Mortgaged', 'Hypothéqué')}</span>}
+              {isBoomTile(game, id) && (
+                <span className="tag tag-boom">🔥 {tr(language, '景气 +50%', 'Boom +50%', 'Essor +50%')}</span>
+              )}
               <span className="tag">{tr(language, '抵押值', 'Mortgage value', 'Valeur hypothèque')} ${mortgageValue(tile)}</span>
             </div>
 
             <div className="title-deed">
-              {rentRows(tile, language).map(([label, value]) => (
-                <div className="title-deed-row" key={label}>
+              {rentRows(tile, language).map(([label, value], i) => (
+                <div
+                  className={`title-deed-row ${i === currentRentTierIndex(game, id) ? 'title-deed-row-current' : ''}`}
+                  key={label}
+                >
                   <span>{label}</span>
                   <b>{value}</b>
                 </div>
@@ -134,31 +141,3 @@ function assetTypeLabel(type: 'property' | 'railroad' | 'utility', language: Lan
   return tr(language, '房地产卡', 'Property Deed', 'Titre de propriété');
 }
 
-function rentRows(tile: ReturnType<typeof getTile>, language: Language): [string, string][] {
-  if (tile.type === 'property') {
-    return [
-      [tr(language, '空地租金', 'Base rent', 'Loyer de base'), `$${tile.rent[0]}`],
-      [tr(language, '1 栋房', '1 house', '1 maison'), `$${tile.rent[1]}`],
-      [tr(language, '2 栋房', '2 houses', '2 maisons'), `$${tile.rent[2]}`],
-      [tr(language, '3 栋房', '3 houses', '3 maisons'), `$${tile.rent[3]}`],
-      [tr(language, '4 栋房', '4 houses', '4 maisons'), `$${tile.rent[4]}`],
-      [tr(language, '酒店', 'Hotel', 'Hôtel'), `$${tile.rent[5]}`],
-    ];
-  }
-  if (tile.type === 'railroad') {
-    return [
-      [tr(language, '拥有 1 条铁路', 'Own 1 railroad', 'Posséder 1 chemin de fer'), '$25'],
-      [tr(language, '拥有 2 条铁路', 'Own 2 railroads', 'Posséder 2 chemins de fer'), '$50'],
-      [tr(language, '拥有 3 条铁路', 'Own 3 railroads', 'Posséder 3 chemins de fer'), '$100'],
-      [tr(language, '拥有 4 条铁路', 'Own 4 railroads', 'Posséder 4 chemins de fer'), '$200'],
-    ];
-  }
-  if (tile.type === 'utility') {
-    return [
-      [tr(language, '拥有 1 家', 'Own 1 utility', 'Posséder 1 service'), tr(language, '骰点 ×4', 'Dice total ×4', 'Total des dés ×4')],
-      [tr(language, '拥有 2 家', 'Own 2 utilities', 'Posséder 2 services'), tr(language, '骰点 ×10', 'Dice total ×10', 'Total des dés ×10')],
-      [tr(language, '机会卡指定', 'Chance card', 'Carte Chance'), tr(language, '骰点 ×10', 'Dice total ×10', 'Total des dés ×10')],
-    ];
-  }
-  return [];
-}

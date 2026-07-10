@@ -180,6 +180,7 @@ io.on('connection', (socket) => {
       diceStyle?: DiceStyle;
       soundEnabled?: boolean;
       language?: Language;
+      industryBoom?: boolean;
     },
     cb?: (res: { ok?: boolean; error?: string }) => void,
   ) => {
@@ -205,6 +206,7 @@ io.on('connection', (socket) => {
           diceStyle: payload?.diceStyle ?? 'classic',
           soundEnabled: payload?.soundEnabled ?? true,
           language: room.language,
+          industryBoom: !!payload?.industryBoom,
         },
       );
       for (const gp of room.game.players) {

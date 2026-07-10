@@ -3,8 +3,9 @@ import type { CSSProperties } from 'react';
 import { getTile } from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameState, Language } from '@monopoly/shared';
 import {
-  localizeDeckName, localizeEtfName, localizeTileInstruction, localizeTileName, tr,
+  localizeDeckName, localizeEtfName, localizeIndustryName, localizeTileInstruction, localizeTileName, tr,
 } from '../i18n';
+import DeedCard from './DeedCard';
 
 const DICE_PIPS: Record<number, number[]> = {
   1: [5],
@@ -23,7 +24,7 @@ const DIE_ORIENTATION: Record<number, { rx: string; ry: string }> = {
   6: { rx: '0deg', ry: '180deg' },
 };
 
-export default function CenterStage({ game, language, code, shownDice, diceRolling, rollingPlayerId, cardFlash }: {
+export default function CenterStage({ game, language, code, shownDice, diceRolling, rollingPlayerId, cardFlash, deedCard }: {
   game: GameState;
   language: Language;
   code: string;
@@ -31,6 +32,7 @@ export default function CenterStage({ game, language, code, shownDice, diceRolli
   diceRolling: boolean;
   rollingPlayerId?: string | null;
   cardFlash: { deck: string; text: string } | null;
+  deedCard?: { tileId: number; id: number } | null;
 }) {
   const current = game.players.find((p) => p.id === game.currentPlayer);
   const rollingPlayer = rollingPlayerId ? game.players.find((p) => p.id === rollingPlayerId) : null;
@@ -44,6 +46,13 @@ export default function CenterStage({ game, language, code, shownDice, diceRolli
         <span className="stage-code">{tr(language, '房间', 'Room', 'Salle')} {code}</span>
       </div>
       <MarketTape game={game} language={language} />
+      {game.settings.industryBoom && game.boomIndustry && (
+        <div className="stage-boom">
+          📈 {tr(language, '本轮景气', 'Boom this round', 'Essor du tour')}:
+          {' '}<b>{localizeIndustryName(game.boomIndustry, language)}</b>
+          {' '}{tr(language, '相关租金 +50%', 'related rents +50%', 'loyers liés +50%')}
+        </div>
+      )}
 
       {current && (
         <div className="stage-turn" style={{ borderColor: current.color }}>
@@ -100,6 +109,10 @@ export default function CenterStage({ game, language, code, shownDice, diceRolli
         </div>
       )}
 
+      {/* 落格地契卡: 卡牌闪现/拍卖/终局优先 */}
+      {deedCard && !cardFlash && game.phase !== 'auction' && game.phase !== 'game-over' && (
+        <DeedCard key={deedCard.id} game={game} language={language} tileId={deedCard.tileId} />
+      )}
     </div>
   );
 }

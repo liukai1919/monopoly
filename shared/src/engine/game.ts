@@ -3,8 +3,8 @@ import {
   groupTiles, isOwnable,
 } from '../board';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
-import { DEFAULT_LANGUAGE, localizeCardText, localizeDeckName, pickLanguage } from '../i18n';
-import { createEmptyPortfolio, createMarket, industriesForEtf, recordMarketEvent } from '../market';
+import { DEFAULT_LANGUAGE, localizeCardText, localizeDeckName, localizeIndustryName, pickLanguage } from '../i18n';
+import { ALL_INDUSTRIES, createEmptyPortfolio, createMarket, industriesForEtf, recordMarketEvent } from '../market';
 import { quoteEtfBuyCostCents, quoteEtfSale } from '../portfolio';
 import { settleMarketRound } from '../pricingEngine';
 import type {
@@ -69,6 +69,7 @@ export function createGame(
     chestDeck: shuffle(CHEST_CARDS.map((c) => c.id), rng),
     pot: 0,
     market: createMarket(),
+    boomIndustry: null,
     portfolios: Object.fromEntries(players.map((p) => [p.id, createEmptyPortfolio()])),
     turnCount: 0,
     winner: null,
@@ -78,6 +79,7 @@ export function createGame(
       diceStyle: 'classic',
       soundEnabled: true,
       language: DEFAULT_LANGUAGE,
+      industryBoom: false,
       ...settings,
     },
     log: [],
@@ -108,6 +110,7 @@ export function applyAction(
 ): ApplyResult {
   const s = structuredClone(state);
   s.stats ??= createGameStats(s.players);
+  s.boomIndustry ??= null;
   const ctx: Ctx = { events: [], rng };
   const player = s.players.find((p) => p.id === playerId);
   if (!player) return { ok: false, error: '未知玩家' };
@@ -1131,6 +1134,7 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
   if (nextIdx <= idx) {
     s.market = settleMarketRound(s.market);
     snapshotNetWorth(s);
+    pickBoomIndustry(s);
   }
   s.dice = null;
   s.doublesCount = 0;
@@ -1138,6 +1142,43 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
   s.phase = 'awaiting-roll';
   const cur = getPlayer(s, s.currentPlayer);
   log(s, `—— 轮到 ${cur.name} ——`);
+}
+
+/** 房规「行业景气」: 每轮取市场信号最强的行业, 相关地块租金 ×1.5 (computeRent 内生效) */
+function pickBoomIndustry(s: GameState): void {
+  if (!s.settings.industryBoom) return;
+  const prev = s.boomIndustry;
+
+  let boom: IndustryTag | null = null;
+  let best = 0;
+  for (const industry of ALL_INDUSTRIES) {          // 声明顺序遍历 → 平局取先, 结果确定
+    const signal = s.market.signals[industry];
+    if (signal > best) {
+      best = signal;
+      boom = industry;
+    }
+  }
+  s.boomIndustry = boom;
+  if (boom === prev) return;
+
+  if (boom) {
+    const name = localizeIndustryName(boom, s.settings.language);
+    log(s, pickLanguage(
+      s.settings.language,
+      `📈 本轮景气行业: ${name} — 相关地块租金 +50%`,
+      `📈 Booming industry this round: ${name} — related tile rents +50%`,
+      `📈 Secteur en plein essor: ${name} — loyers des cases liées +50%`,
+    ));
+    // magnitude 0: 进行情带播报但零信号贡献, 避免 景气→信号→景气 反馈回路
+    recordMarketEvent(s, { kind: 'industry-boom', polarity: 'bullish', industries: [boom], magnitude: 0 });
+  } else {
+    log(s, pickLanguage(
+      s.settings.language,
+      '📉 本轮无景气行业',
+      '📉 No booming industry this round',
+      '📉 Aucun secteur en plein essor ce tour-ci',
+    ));
+  }
 }
 
 // ---------------------------------------------------------------- 日志

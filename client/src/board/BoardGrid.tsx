@@ -1,7 +1,9 @@
+import { memo, useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable } from '@monopoly/shared';
-import type { GameState, Language, Tile } from '@monopoly/shared';
+import { BOARD, GROUP_COLORS, getPlayerToken, isOwnable, ownsFullGroup } from '@monopoly/shared';
+import type { GameState, Language, PlayerState, Tile } from '@monopoly/shared';
 import { localizeTileInstruction, localizeTileName, tr } from '../i18n';
+import { isBoomTile, liveRentLabel } from './deedInfo';
 
 /** 一笔正在飞行的钱; fromTile/toTile 为 null 表示银行(棋盘中央) */
 export interface MoneyFxItem {
@@ -42,6 +44,27 @@ function tileIcon(tile: Tile): string {
   return TILE_ICONS[tile.type] ?? '';
 }
 
+/** 每个可购格的展示信息, 每次广播算一次 (棋子移动的高频重渲染不重复算) */
+interface TileInfo {
+  rentLabel: string | null;
+  monopoly: boolean;
+  boom: boolean;
+}
+
+function buildTileInfoMap(game: GameState, language: Language): Map<number, TileInfo> {
+  const map = new Map<number, TileInfo>();
+  for (const tile of BOARD) {
+    if (!isOwnable(tile)) continue;
+    const own = game.ownership[tile.id];
+    map.set(tile.id, {
+      rentLabel: liveRentLabel(game, tile.id, language),
+      monopoly: tile.type === 'property' && !!own?.owner && ownsFullGroup(game, own.owner, tile.group),
+      boom: isBoomTile(game, tile.id),
+    });
+  }
+  return map;
+}
+
 export default function BoardGrid({
   game, language, positions, rollingPlayerId, diceRolling, moneyFx, constructionFx, landedFx, children,
 }: {
@@ -55,6 +78,7 @@ export default function BoardGrid({
   landedFx?: { tile: number; id: number } | null;
   children?: ReactNode;
 }) {
+  const tileInfo = useMemo(() => buildTileInfoMap(game, language), [game, language]);
   const hasFx = (moneyFx && moneyFx.length > 0) || (constructionFx && constructionFx.length > 0);
   return (
     <div className="board-grid">
@@ -64,13 +88,17 @@ export default function BoardGrid({
           tile={tile}
           game={game}
           language={language}
-          positions={positions}
-          rollingPlayerId={rollingPlayerId}
-          diceRolling={diceRolling}
+          info={tileInfo.get(tile.id)}
           landedId={landedFx?.tile === tile.id ? landedFx.id : null}
         />
       ))}
       <div className="board-center">{children}</div>
+      <TokenLayer
+        players={game.players}
+        positions={positions}
+        rollingPlayerId={rollingPlayerId}
+        diceRolling={diceRolling}
+      />
       {hasFx && (
         <div className="board-fx-layer">
           {moneyFx?.map((fx) => <MoneyFly key={fx.id} fx={fx} />)}
@@ -92,6 +120,67 @@ function tileCenterPct(tileId: number | null): { x: number; y: number } {
   if (tileId == null) return { x: 50, y: 50 }; // 银行 = 棋盘中央
   const { row, col } = tileGridPos(tileId);
   return { x: axisCenterPct(col), y: axisCenterPct(row) };
+}
+
+/** 同格多子的扇形偏移 (vh) */
+const STACK_OFFSETS: [number, number][] = [
+  [0, 0], [-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1], [0, -2.2],
+];
+
+/**
+ * 棋盘级棋子层: 每个棋子节点持久化 (key=玩家id, 永不重挂载),
+ * left/top 过渡让逐格移动连成滑行, 也让格子组件不再随移动重渲染。
+ */
+function TokenLayer({ players, positions, rollingPlayerId, diceRolling }: {
+  players: PlayerState[];
+  positions: Record<string, number>;
+  rollingPlayerId?: string | null;
+  diceRolling?: boolean;
+}) {
+  const alive = players.filter((p) => !p.bankrupt);
+  const stackIndex = new Map<string, number>();
+  const perTile = new Map<number, number>();
+  for (const p of alive) {
+    const pos = positions[p.id] ?? p.position;
+    const n = perTile.get(pos) ?? 0;
+    stackIndex.set(p.id, n);
+    perTile.set(pos, n + 1);
+  }
+
+  return (
+    <div className="token-layer" aria-hidden="true">
+      {alive.map((p) => {
+        const pos = positions[p.id] ?? p.position;
+        const { x, y } = tileCenterPct(pos);
+        const [ox, oy] = STACK_OFFSETS[stackIndex.get(p.id) ?? 0] ?? [0, 0];
+        const token = getPlayerToken(p.tokenId);
+        const isRolling = diceRolling && p.id === rollingPlayerId;
+        return (
+          <span
+            key={p.id}
+            className={`token token-glide ${isRolling ? 'token-rolling' : ''}`}
+            style={{
+              left: `${x}%`,
+              top: `${y}%`,
+              '--stack-x': `${ox}vh`,
+              '--stack-y': `${oy}vh`,
+              borderColor: p.color,
+              background: `${p.color}33`,
+            } as CSSProperties}
+            title={`${p.name}${token ? ` - ${token.name}` : ''}`}
+          >
+            {p.emoji}
+            {isRolling && (
+              <span className="token-roll-burst" aria-hidden="true">
+                <i>🎲</i>
+                <i>🎲</i>
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function MoneyFly({ fx }: { fx: MoneyFxItem }) {
@@ -134,13 +223,11 @@ function ConstructionBurst({ fx }: { fx: ConstructionFxItem }) {
   );
 }
 
-function TileView({ tile, game, language, positions, rollingPlayerId, diceRolling, landedId }: {
+const TileView = memo(function TileView({ tile, game, language, info, landedId }: {
   tile: Tile;
   game: GameState;
   language: Language;
-  positions: Record<string, number>;
-  rollingPlayerId?: string | null;
-  diceRolling?: boolean;
+  info?: TileInfo;
   landedId?: number | null;
 }) {
   const { row, col } = tileGridPos(tile.id);
@@ -149,19 +236,25 @@ function TileView({ tile, game, language, positions, rollingPlayerId, diceRollin
   const owner = own?.owner ? game.players.find((p) => p.id === own.owner) : null;
   const name = localizeTileName(tile, language);
   const instruction = localizeTileInstruction(tile, language);
-  const tokens = game.players.filter(
-    (p) => !p.bankrupt && (positions[p.id] ?? p.position) === tile.id,
-  );
+  const ownable = isOwnable(tile);
+  const classes = [
+    'tile',
+    `tile-${side}`,
+    owner ? 'tile-owned' : '',
+    info?.monopoly ? 'tile-monopoly' : '',
+    info?.boom ? 'tile-boom' : '',
+    own?.mortgaged ? 'tile-mortgaged' : '',
+  ].filter(Boolean).join(' ');
 
   return (
     <div
-      className={`tile tile-${side} ${own?.mortgaged ? 'tile-mortgaged' : ''}`}
+      className={classes}
       title={`${name}: ${instruction}`}
       style={{
         gridRow: row,
         gridColumn: col,
-        ...(owner ? { boxShadow: `inset 0 0 0 3px ${owner.color}` } : {}),
-      }}
+        ...(owner ? { '--owner-color': owner.color } : {}),
+      } as CSSProperties}
     >
       {landedId != null && <span key={landedId} className="tile-land-pulse" aria-hidden="true" />}
       {tile.type === 'property' && (
@@ -180,34 +273,21 @@ function TileView({ tile, game, language, positions, rollingPlayerId, diceRollin
       <div className="tile-body">
         {tile.type !== 'property' && <div className="tile-icon">{tileIcon(tile)}</div>}
         <div className="tile-name">{name}</div>
-        <div className="tile-instruction">{instruction}</div>
-        {isOwnable(tile) && !owner && <div className="tile-price">${tile.price}</div>}
-        {own?.mortgaged && <div className="tile-mort-mark">{tr(language, '已抵押', 'Mortgaged', 'Hypothéqué')}</div>}
+        {ownable && language !== 'en' && <div className="tile-name-en">{tile.nameEn}</div>}
+        {!ownable && <div className="tile-instruction">{instruction}</div>}
       </div>
-      {tokens.length > 0 && (
-        <div className="tile-tokens">
-          {tokens.map((p) => {
-            const token = getPlayerToken(p.tokenId);
-            const isRolling = diceRolling && p.id === rollingPlayerId;
-            return (
-              <span
-                key={`${p.id}-${positions[p.id] ?? p.position}`}
-                className={`token ${isRolling ? 'token-rolling' : ''}`}
-                style={{ borderColor: p.color, background: `${p.color}33` }}
-                title={`${p.name}${token ? ` - ${token.name}` : ''}`}
-              >
-                {p.emoji}
-                {isRolling && (
-                  <span className="token-roll-burst" aria-hidden="true">
-                    <i>🎲</i>
-                    <i>🎲</i>
-                  </span>
-                )}
-              </span>
-            );
-          })}
+      {ownable && !own?.mortgaged && (
+        <div className={`tile-price-band ${owner ? 'tile-price-band-rent' : ''}`}>
+          {owner ? info?.rentLabel : `$${tile.price}`}
         </div>
+      )}
+      {owner && (
+        <span className="tile-owner-chip" style={{ borderColor: owner.color }}>{owner.emoji}</span>
+      )}
+      {info?.boom && <span className="tile-boom-chip" aria-hidden="true">🔥</span>}
+      {own?.mortgaged && (
+        <div className="tile-mort-stamp">{tr(language, '抵押', 'MORTGAGED', 'HYPOTHÉQUÉ')}</div>
       )}
     </div>
   );
-}
+});

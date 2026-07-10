@@ -66,6 +66,7 @@ b { font-weight: 700; }
   color: var(--text-dim);
   white-space: nowrap;
 }
+.tag-boom { background: #7a3d12; color: #ffd9a8; }
 .tag-warn { background: #5c4a18; color: var(--warn); }
 .tag-dead { background: #4a1a22; color: #ff8f9e; }
 
@@ -249,10 +250,51 @@ b { font-weight: 700; }
 
 .tile {
   position: relative;
-  background: var(--tile-bg);
+  background: linear-gradient(160deg, #fdf9ec, #f3edd8);
   color: #1d2a20;
   display: flex;
   overflow: hidden;
+  box-shadow: inset 0 0 5px #0000000d;
+}
+.tile-owned { box-shadow: inset 0 0 0 3px var(--owner-color), inset 0 0 5px #0000000d; }
+.tile-monopoly {
+  box-shadow: inset 0 0 0 3px var(--owner-color),
+    inset 0 0 12px 2px color-mix(in srgb, var(--owner-color) 50%, transparent);
+  animation: monopoly-breathe 2.6s ease-in-out infinite alternate;
+}
+@keyframes monopoly-breathe {
+  from { filter: saturate(1); }
+  to { filter: saturate(1.25) brightness(1.04); }
+}
+.tile-boom { outline: 2px solid #ff8c42aa; outline-offset: -2px; }
+.tile-boom-chip {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  z-index: 4;
+  font-size: clamp(9px, 1.5vh, 16px);
+  filter: drop-shadow(0 1px 2px #0007);
+  animation: boom-flicker 1.6s ease-in-out infinite alternate;
+}
+@keyframes boom-flicker {
+  from { transform: scale(1); opacity: 0.85; }
+  to { transform: scale(1.18); opacity: 1; }
+}
+.tile-owner-chip {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 4;
+  width: clamp(12px, 2vh, 21px);
+  height: clamp(12px, 2vh, 21px);
+  border-radius: 50%;
+  border: 2px solid;
+  background: #fffdf4f2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(7px, 1.2vh, 13px);
+  box-shadow: 0 1px 3px #0006;
 }
 .tile-bottom { flex-direction: column; }
 .tile-top { flex-direction: column-reverse; }
@@ -266,6 +308,7 @@ b { font-weight: 700; }
   align-items: center;
   justify-content: center;
   border: 1px solid #0002;
+  box-shadow: inset 0 -2px 3px #0002;
 }
 .tile-left .tile-bar, .tile-right .tile-bar { flex-basis: 22%; }
 .tile-buildings {
@@ -324,19 +367,65 @@ b { font-weight: 700; }
   overflow: hidden;
 }
 .tile-corner .tile-instruction { font-size: clamp(6px, 0.85vh, 10px); }
-.tile-price { font-size: clamp(7px, 0.95vh, 11px); color: #555; }
-.tile-mortgaged .tile-body { opacity: 0.45; }
-.tile-mort-mark { font-size: clamp(7px, 0.9vh, 10px); color: #a00; font-weight: 700; }
-
-.tile-tokens {
-  position: absolute;
-  inset: auto 1px 1px 1px;
+.tile-name-en {
+  max-width: 100%;
+  font-size: clamp(5px, 0.68vh, 8px);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #7d8a80;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-price-band {
+  flex: 0 0 clamp(11px, 1.6vh, 17px);
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 1px;
-  z-index: 3;
+  background: #17332212;
+  border: 1px solid #17332222;
+  font-size: clamp(7px, 1vh, 12px);
+  font-weight: 700;
+  color: #33473a;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tile-left .tile-price-band, .tile-right .tile-price-band { flex-basis: 18%; }
+.tile-price-band-rent { background: #1a7a4326; color: #0c5a30; }
+.tile-mortgaged .tile-body { opacity: 0.4; }
+.tile-mort-stamp {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  transform: translate(-50%, -50%) rotate(-16deg);
+  border: 2px solid #b02a37;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #b02a37;
+  background: #fff8f0e6;
+  font-size: clamp(8px, 1.2vh, 14px);
+  font-weight: 800;
+  letter-spacing: 2px;
+  opacity: 0.9;
   pointer-events: none;
+  max-width: 92%;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.token-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.token-glide {
+  position: absolute;
+  transform: translate(-50%, -50%) translate(var(--stack-x, 0px), var(--stack-y, 0px));
+  transition: left 140ms linear, top 140ms linear;
+  animation: none;
 }
 .token {
   position: relative;
@@ -356,6 +445,11 @@ b { font-weight: 700; }
   z-index: 6;
   animation: token-roll-shake 0.16s infinite alternate;
   box-shadow: 0 0 0 3px #fff7, 0 0 18px #ffd166, 0 3px 8px #0008;
+}
+.token-glide.token-rolling { animation: token-glide-shake 0.16s infinite alternate; }
+@keyframes token-glide-shake {
+  from { transform: translate(-50%, -50%) translate(var(--stack-x, 0px), var(--stack-y, 0px)) rotate(-8deg) scale(1.05); }
+  to { transform: translate(-50%, -52%) translate(var(--stack-x, 0px), var(--stack-y, 0px)) rotate(8deg) scale(1.16); }
 }
 .token-roll-burst {
   position: absolute;
@@ -617,6 +711,15 @@ b { font-weight: 700; }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .stage-pot { font-size: clamp(12px, 1.8vh, 20px); background: #ffffffaa; border-radius: 10px; padding: 4px 12px; }
+.stage-boom {
+  font-size: clamp(11px, 1.7vh, 19px);
+  background: #fff3e2ee;
+  color: #8a4a12;
+  border: 1px solid #e8a25e;
+  border-radius: 10px;
+  padding: 3px 12px;
+  font-weight: 700;
+}
 
 .stage-banner {
   background: #fff8;
@@ -670,6 +773,121 @@ b { font-weight: 700; }
   margin-left: 6px;
   font-weight: 700;
 }
+
+/* ---------------- 落格地契卡 ---------------- */
+
+.deed-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(60%, 380px);
+  max-height: 86%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(165deg, #fdf9ec, #f2ecd6);
+  color: #22301f;
+  border: 3px solid #17332233;
+  box-shadow: 0 16px 50px #0008;
+  z-index: 15;
+  animation: pop 0.28s;
+  display: flex;
+  flex-direction: column;
+}
+.deed-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9vh 14px;
+  color: #fff;
+  font-weight: 800;
+  font-size: clamp(11px, 1.7vh, 18px);
+  text-shadow: 0 1px 2px #0006;
+  box-shadow: inset 0 -2px 3px #0003;
+}
+.deed-title {
+  padding: 1vh 14px 0;
+  font-size: clamp(15px, 2.6vh, 27px);
+  font-weight: 800;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.deed-title-en {
+  font-size: clamp(9px, 1.3vh, 14px);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #7d8a80;
+  font-weight: 700;
+}
+.deed-meta { padding: 0.3vh 14px; color: #5b6a60; font-size: clamp(10px, 1.6vh, 16px); font-weight: 700; }
+.deed-owner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0.5vh 14px;
+  font-size: clamp(11px, 1.7vh, 18px);
+}
+.deed-owner-chip {
+  width: clamp(16px, 2.4vh, 26px);
+  height: clamp(16px, 2.4vh, 26px);
+  border-radius: 50%;
+  border: 2px solid;
+  background: #fffdf4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(9px, 1.4vh, 15px);
+}
+.deed-live-rent {
+  margin-left: auto;
+  background: #1a7a4322;
+  color: #0c5a30;
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-size: clamp(10px, 1.6vh, 16px);
+}
+.deed-rent-table { margin: 0.6vh 14px; border-top: 1px dashed #17332240; }
+.deed-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.42vh 2px;
+  font-size: clamp(10px, 1.65vh, 17px);
+  border-bottom: 1px dashed #17332226;
+}
+.deed-row-current {
+  background: #ffd16633;
+  border-radius: 6px;
+  padding-left: 6px;
+  padding-right: 6px;
+  font-weight: 800;
+}
+.deed-row-mark {
+  font-style: normal;
+  color: #a5601a;
+  font-size: 0.82em;
+  margin-left: 6px;
+  font-weight: 800;
+}
+.deed-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0.4vh 14px 1.2vh;
+}
+.deed-tag {
+  font-size: clamp(9px, 1.35vh, 14px);
+  background: #17332214;
+  color: #33473a;
+  border-radius: 7px;
+  padding: 1px 8px;
+  font-weight: 700;
+}
+.deed-tag-boom { background: #ffddb3; color: #8a4a12; }
+.deed-tag-warn { background: #f6c6cc; color: #8a1420; }
 
 .card-flash {
   position: absolute;

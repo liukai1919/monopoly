@@ -233,6 +233,11 @@ function marketCopy(
           headline: `${c.industry} ETF faces forced-selling pressure`,
           driverText: `${c.player} fire-sold ${c.industry} ETF to cover debt${amount}`,
         };
+      case 'industry-boom':
+        return {
+          headline: `${c.industry} enters a boom cycle; related tile rents up 50%`,
+          driverText: `${c.industry} had the strongest market signal this round`,
+        };
       default:
         return {
           headline: polarity === 'bullish' ? `${c.industry} gets a boost` : `${c.industry} comes under pressure`,
@@ -308,6 +313,11 @@ function marketCopy(
           headline: `Le FNB ${c.industry} subit une vente forcée`,
           driverText: `${c.player} vend en urgence le FNB ${c.industry} pour payer sa dette${amount}`,
         };
+      case 'industry-boom':
+        return {
+          headline: `Le secteur ${c.industry} entre en plein essor; loyers des cases liées +50%`,
+          driverText: `${c.industry} a émis le signal de marché le plus fort ce tour-ci`,
+        };
       default:
         return {
           headline: polarity === 'bullish' ? `${c.industry} reçoit une impulsion` : `${c.industry} est sous pression`,
@@ -381,6 +391,11 @@ function marketCopy(
       return {
         headline: `${c.industry}ETF 遭遇强制抛售压力`,
         driverText: `${c.player} 为偿债火售${c.industry}ETF${amount}`,
+      };
+    case 'industry-boom':
+      return {
+        headline: `${c.industry}进入景气周期, 相关地块租金上调 50%`,
+        driverText: `本轮市场信号最强的板块是${c.industry}`,
       };
     default:
       return {
