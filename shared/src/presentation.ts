@@ -1,8 +1,4 @@
-import type { Action, BoardMode, GameEvent } from './types';
-
-export function parseBoardMode(value: unknown): BoardMode {
-  return value === 'living-city' ? 'living-city' : 'classic';
-}
+import type { Action, GameEvent } from './types';
 
 export const PRESENTATION_TIMING_MS = {
   diceRolling: 650,

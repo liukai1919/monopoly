@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { actionBypassesPresentationLock, actionPresentationLockMs, parseBoardMode } from '../presentation';
+import { DEFAULT_GAME_BOARD_MODE, DEFAULT_LOBBY_BOARD_MODE, parseBoardMode } from '../boardMode';
+import { actionBypassesPresentationLock, actionPresentationLockMs } from '../presentation';
 import type { GameEvent } from '../types';
 
 const EVENT_CASES: [string, GameEvent, number][] = [
@@ -47,6 +48,11 @@ describe('presentation pacing', () => {
 });
 
 describe('board mode parsing', () => {
+  test('uses a progressive lobby default and a backwards-compatible engine default', () => {
+    expect(DEFAULT_LOBBY_BOARD_MODE).toBe('living-city');
+    expect(DEFAULT_GAME_BOARD_MODE).toBe('classic');
+  });
+
   test('accepts known modes and falls back to classic for untrusted input', () => {
     expect(parseBoardMode('living-city')).toBe('living-city');
     expect(parseBoardMode('classic')).toBe('classic');

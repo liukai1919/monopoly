@@ -1,24 +1,12 @@
 import { memo, useMemo } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
-import { BOARD, GROUP_COLORS, isOwnable } from '@monopoly/shared';
+import type { CSSProperties } from 'react';
+import { BOARD, GROUP_COLORS } from '@monopoly/shared';
 import type { ColorGroup, GameState, Language, Tile } from '@monopoly/shared';
-import { localizeTileInstruction, localizeTileName, tr } from '../i18n';
-import { BoardFxLayer, BoardTokenLayer } from './BoardLayers';
-import type { BoardPoint, ConstructionFxItem, MoneyFxItem } from './BoardLayers';
-import { boardTileIcon, boardTileSide, buildBoardTileInfo } from './boardScene';
-import type { BoardTileInfo } from './boardScene';
-
-interface LivingCityBoardProps {
-  game: GameState;
-  language: Language;
-  positions: Record<string, number>;
-  rollingPlayerId?: string | null;
-  diceRolling?: boolean;
-  moneyFx?: MoneyFxItem[];
-  constructionFx?: ConstructionFxItem[];
-  landedFx?: { tile: number; id: number } | null;
-  children?: ReactNode;
-}
+import { tr } from '../i18n';
+import { BoardFxLayer, BoardLandingPulse, BoardTokenLayer } from './BoardLayers';
+import type { BoardAdapterProps, BoardPoint } from './BoardLayers';
+import { boardTileIcon, buildBoardScene } from './boardScene';
+import type { BoardTileViewModel } from './boardScene';
 
 /**
  * 城市棋盘仍沿用 0 → 39 的经典路径，只改变空间 geometry。
@@ -42,10 +30,10 @@ const ROUTE_POINTS = [...BOARD.map((tile) => livingCityTilePoint(tile.id)), livi
 
 const COLOR_GROUPS = Object.keys(GROUP_COLORS) as ColorGroup[];
 
-export default function LivingCityBoard({
+export default function LivingCityBoardAdapter({
   game, language, positions, rollingPlayerId, diceRolling, moneyFx, constructionFx, landedFx, children,
-}: LivingCityBoardProps) {
-  const tileInfo = useMemo(() => buildBoardTileInfo(game, language), [game, language]);
+}: BoardAdapterProps) {
+  const scene = useMemo(() => buildBoardScene(game, language), [game, language]);
   const latestTileId = game.market.recentEvents.at(-1)?.tileId;
 
   return (
@@ -58,10 +46,8 @@ export default function LivingCityBoard({
       {BOARD.map((tile) => (
         <CityTile
           key={tile.id}
-          tile={tile}
-          game={game}
+          view={scene.get(tile.id)!}
           language={language}
-          info={tileInfo.get(tile.id)}
           landedId={landedFx?.tile === tile.id ? landedFx.id : null}
           marketActive={latestTileId === tile.id}
         />
@@ -155,30 +141,23 @@ function CityInfrastructure({ game, latestTileId }: { game: GameState; latestTil
 }
 
 const CityTile = memo(function CityTile({
-  tile, game, language, info, landedId, marketActive,
+  view, language, landedId, marketActive,
 }: {
-  tile: Tile;
-  game: GameState;
+  view: BoardTileViewModel;
   language: Language;
-  info?: BoardTileInfo;
   landedId?: number | null;
   marketActive: boolean;
 }) {
+  const { tile, side, name, instruction, ownable, ownership: own, owner } = view;
   const point = livingCityTilePoint(tile.id);
-  const side = boardTileSide(tile.id);
-  const own = game.ownership[tile.id];
-  const owner = own?.owner ? game.players.find((player) => player.id === own.owner) : null;
-  const ownable = isOwnable(tile);
-  const name = localizeTileName(tile, language);
-  const instruction = localizeTileInstruction(tile, language);
   const accent = tile.type === 'property' ? GROUP_COLORS[tile.group] : cityTileAccent(tile);
   const classes = [
     'living-city-tile',
     `living-city-tile-${side}`,
     ownable ? 'living-city-tile-ownable' : 'living-city-tile-event',
     owner ? 'is-owned' : 'is-unowned',
-    info?.monopoly ? 'is-monopoly' : '',
-    info?.boom ? 'is-boom' : '',
+    view.monopoly ? 'is-monopoly' : '',
+    view.boom ? 'is-boom' : '',
     own?.mortgaged ? 'is-mortgaged' : '',
     marketActive ? 'is-market-active' : '',
   ].filter(Boolean).join(' ');
@@ -196,7 +175,7 @@ const CityTile = memo(function CityTile({
         ...(owner ? { '--owner-color': owner.color } : {}),
       } as CSSProperties}
     >
-      {landedId != null && <span key={landedId} className="city-land-pulse" aria-hidden="true" />}
+      <BoardLandingPulse id={landedId} className="city-land-pulse" />
       <span className="city-tile-index">{String(tile.id).padStart(2, '0')}</span>
       <span className="city-tile-accent" />
       <div className="city-tile-main">
@@ -207,13 +186,13 @@ const CityTile = memo(function CityTile({
       </div>
       {ownable ? (
         <span className={`city-tile-value ${owner ? 'is-rent' : ''}`}>
-          {owner ? info?.rentLabel : `$${tile.price}`}
+          {owner ? view.rentLabel : `$${view.price}`}
         </span>
       ) : (
         <span className="city-tile-value city-tile-action">{shortInstruction(tile, language)}</span>
       )}
       {owner && <span className="city-owner-node" style={{ borderColor: owner.color }}>{owner.emoji}</span>}
-      {info?.boom && <span className="city-boom-node" aria-label={tr(language, '景气行业', 'Boom industry', 'Secteur en essor')}>🔥</span>}
+      {view.boom && <span className="city-boom-node" aria-label={tr(language, '景气行业', 'Boom industry', 'Secteur en essor')}>🔥</span>}
       {own?.mortgaged && <span className="city-mortgage-shutter">{tr(language, '抵押', 'CLOSED', 'FERMÉ')}</span>}
     </div>
   );

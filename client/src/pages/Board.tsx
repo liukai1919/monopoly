@@ -3,13 +3,15 @@ import type { CSSProperties, MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  GROUP_COLORS, PRESENTATION_TIMING_MS, getPlayerToken, getTile, isOwnable, presentationForGameEvent,
+  DEFAULT_LOBBY_BOARD_MODE, GROUP_COLORS, PRESENTATION_TIMING_MS,
+  getPlayerToken, getTile, isOwnable, presentationForGameEvent,
 } from '@monopoly/shared';
 import type { BoardMode, DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import type { RoomSnapshot } from '../api';
 import BoardExperience from '../board/BoardExperience';
 import type { ConstructionFxItem, MoneyFxItem } from '../board/BoardExperience';
+import '../board/boardModePicker.css';
 import SettlementScreen from '../board/SettlementScreen';
 import Sidebar from '../board/Sidebar';
 import {
@@ -584,7 +586,7 @@ function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
 }) {
   const [freeParkingPot, setFreeParkingPot] = useState(false);
   const [industryBoom, setIndustryBoom] = useState(true);
-  const [boardMode, setBoardMode] = useState<BoardMode>('living-city');
+  const [boardMode, setBoardMode] = useState<BoardMode>(DEFAULT_LOBBY_BOARD_MODE);
   const [maxTurns, setMaxTurns] = useState<number>(0);
   const [diceStyle, setDiceStyle] = useState<DiceStyle>('classic');
   const [soundEnabled, setSoundEnabled] = useState(true);

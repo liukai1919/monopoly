@@ -1,6 +1,6 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { getPlayerToken } from '@monopoly/shared';
-import type { PlayerState } from '@monopoly/shared';
+import type { GameState, Language, PlayerState } from '@monopoly/shared';
 
 export interface BoardPoint {
   x: number;
@@ -21,6 +21,19 @@ export interface ConstructionFxItem {
   id: number;
   tileId: number;
   building: 'house' | 'hotel';
+}
+
+/** 两个棋盘 adapter 必须实现的共同 interface。 */
+export interface BoardAdapterProps {
+  game: GameState;
+  language: Language;
+  positions: Record<string, number>;
+  rollingPlayerId?: string | null;
+  diceRolling?: boolean;
+  moneyFx?: MoneyFxItem[];
+  constructionFx?: ConstructionFxItem[];
+  landedFx?: { tile: number; id: number } | null;
+  children?: ReactNode;
 }
 
 /** 同格多子的扇形偏移 (vh) */
@@ -100,6 +113,10 @@ export function BoardFxLayer({ moneyFx, constructionFx, resolvePoint, className 
       {constructionFx?.map((fx) => <ConstructionBurst key={fx.id} fx={fx} resolvePoint={resolvePoint} />)}
     </div>
   );
+}
+
+export function BoardLandingPulse({ id, className }: { id?: number | null; className: string }) {
+  return id == null ? null : <span key={id} className={className} aria-hidden="true" />;
 }
 
 function MoneyFly({ fx, resolvePoint }: { fx: MoneyFxItem; resolvePoint: TilePointResolver }) {

@@ -104,6 +104,15 @@ describe('棋盘显示模式', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.state.settings.boardMode).toBe('classic');
   });
+
+  test('所选城市棋盘模式在状态快照与后续行动中保持不变', () => {
+    const reconnectSnapshot = structuredClone(newGame(2, { boardMode: 'living-city' }));
+    expect(reconnectSnapshot.settings.boardMode).toBe('living-city');
+
+    const result = applyAction(reconnectSnapshot, 'a', { type: 'roll' }, diceRng(2, 3));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.state.settings.boardMode).toBe('living-city');
+  });
 });
 
 describe('移动与起点薪水', () => {

@@ -2,6 +2,7 @@ import {
   BOARD, GO_SALARY, GROUP_NAMES, JAIL_FINE, JAIL_POS, START_CASH, TOTAL_HOTELS, TOTAL_HOUSES,
   groupTiles, isOwnable,
 } from '../board';
+import { DEFAULT_GAME_BOARD_MODE } from '../boardMode';
 import { CHANCE_CARDS, CHEST_CARDS, getCard } from '../cards';
 import { DEFAULT_LANGUAGE, localizeCardText, localizeDeckName, localizeIndustryName, pickLanguage } from '../i18n';
 import { ALL_INDUSTRIES, createEmptyPortfolio, createMarket, industriesForEtf, recordMarketEvent } from '../market';
@@ -74,7 +75,7 @@ export function createGame(
     turnCount: 0,
     winner: null,
     settings: {
-      boardMode: 'classic',
+      boardMode: DEFAULT_GAME_BOARD_MODE,
       freeParkingPot: false,
       maxTurns: null,
       diceStyle: 'classic',
@@ -112,7 +113,7 @@ export function applyAction(
   const s = structuredClone(state);
   s.stats ??= createGameStats(s.players);
   s.boomIndustry ??= null;
-  s.settings.boardMode ??= 'classic';
+  s.settings.boardMode ??= DEFAULT_GAME_BOARD_MODE;
   const ctx: Ctx = { events: [], rng };
   const player = s.players.find((p) => p.id === playerId);
   if (!player) return { ok: false, error: '未知玩家' };

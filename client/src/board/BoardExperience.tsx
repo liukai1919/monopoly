@@ -1,8 +1,8 @@
 import type { GameState, Language } from '@monopoly/shared';
-import BoardGrid from './BoardGrid';
-import type { ConstructionFxItem, MoneyFxItem } from './BoardLayers';
+import ClassicBoardAdapter from './BoardGrid';
+import type { BoardAdapterProps, ConstructionFxItem, MoneyFxItem } from './BoardLayers';
 import CenterStage from './CenterStage';
-import LivingCityBoard from './LivingCityBoard';
+import LivingCityBoardAdapter from './LivingCityBoard';
 import './livingCity.css';
 
 export type { ConstructionFxItem, MoneyFxItem } from './BoardLayers';
@@ -42,7 +42,7 @@ export default function BoardExperience({
       deedCard={presentation.deedCard}
     />
   );
-  const boardProps = {
+  const boardProps: BoardAdapterProps = {
     game,
     language,
     positions: presentation.positions,
@@ -55,6 +55,6 @@ export default function BoardExperience({
   };
 
   return game.settings.boardMode === 'living-city'
-    ? <LivingCityBoard {...boardProps} />
-    : <BoardGrid {...boardProps} />;
+    ? <LivingCityBoardAdapter {...boardProps} />
+    : <ClassicBoardAdapter {...boardProps} />;
 }

@@ -1,5 +1,6 @@
 export * from './types';
 export * from './board';
+export * from './boardMode';
 export * from './cards';
 export * from './i18n';
 export * from './market';

@@ -1,12 +1,11 @@
 import { memo, useMemo } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
-import { BOARD, GROUP_COLORS, isOwnable } from '@monopoly/shared';
-import type { GameState, Language, Tile } from '@monopoly/shared';
-import { localizeTileInstruction, localizeTileName, tr } from '../i18n';
-import { BoardFxLayer, BoardTokenLayer } from './BoardLayers';
-import type { ConstructionFxItem, MoneyFxItem } from './BoardLayers';
-import { boardTileIcon, boardTileSide, buildBoardTileInfo } from './boardScene';
-import type { BoardTileInfo } from './boardScene';
+import type { CSSProperties } from 'react';
+import { BOARD, GROUP_COLORS } from '@monopoly/shared';
+import { tr } from '../i18n';
+import { BoardFxLayer, BoardLandingPulse, BoardTokenLayer } from './BoardLayers';
+import type { BoardAdapterProps } from './BoardLayers';
+import { boardTileIcon, buildBoardScene } from './boardScene';
+import type { BoardTileViewModel } from './boardScene';
 
 export type { ConstructionFxItem, MoneyFxItem } from './BoardLayers';
 
@@ -18,29 +17,17 @@ function tileGridPos(id: number): { row: number; col: number } {
   return { row: id - 29, col: 11 };
 }
 
-export default function BoardGrid({
+export default function ClassicBoardAdapter({
   game, language, positions, rollingPlayerId, diceRolling, moneyFx, constructionFx, landedFx, children,
-}: {
-  game: GameState;
-  language: Language;
-  positions: Record<string, number>;
-  rollingPlayerId?: string | null;
-  diceRolling?: boolean;
-  moneyFx?: MoneyFxItem[];
-  constructionFx?: ConstructionFxItem[];
-  landedFx?: { tile: number; id: number } | null;
-  children?: ReactNode;
-}) {
-  const tileInfo = useMemo(() => buildBoardTileInfo(game, language), [game, language]);
+}: BoardAdapterProps) {
+  const scene = useMemo(() => buildBoardScene(game, language), [game, language]);
   return (
     <div className="board-grid">
       {BOARD.map((tile) => (
         <TileView
           key={tile.id}
-          tile={tile}
-          game={game}
+          view={scene.get(tile.id)!}
           language={language}
-          info={tileInfo.get(tile.id)}
           landedId={landedFx?.tile === tile.id ? landedFx.id : null}
         />
       ))}
@@ -70,26 +57,19 @@ function classicTilePoint(tileId: number | null): { x: number; y: number } {
   return { x: axisCenterPct(col), y: axisCenterPct(row) };
 }
 
-const TileView = memo(function TileView({ tile, game, language, info, landedId }: {
-  tile: Tile;
-  game: GameState;
-  language: Language;
-  info?: BoardTileInfo;
+const TileView = memo(function TileView({ view, language, landedId }: {
+  view: BoardTileViewModel;
+  language: BoardAdapterProps['language'];
   landedId?: number | null;
 }) {
+  const { tile, side, name, instruction, ownable, ownership: own, owner } = view;
   const { row, col } = tileGridPos(tile.id);
-  const side = boardTileSide(tile.id);
-  const own = game.ownership[tile.id];
-  const owner = own?.owner ? game.players.find((p) => p.id === own.owner) : null;
-  const name = localizeTileName(tile, language);
-  const instruction = localizeTileInstruction(tile, language);
-  const ownable = isOwnable(tile);
   const classes = [
     'tile',
     `tile-${side}`,
     owner ? 'tile-owned' : '',
-    info?.monopoly ? 'tile-monopoly' : '',
-    info?.boom ? 'tile-boom' : '',
+    view.monopoly ? 'tile-monopoly' : '',
+    view.boom ? 'tile-boom' : '',
     own?.mortgaged ? 'tile-mortgaged' : '',
   ].filter(Boolean).join(' ');
 
@@ -103,7 +83,7 @@ const TileView = memo(function TileView({ tile, game, language, info, landedId }
         ...(owner ? { '--owner-color': owner.color } : {}),
       } as CSSProperties}
     >
-      {landedId != null && <span key={landedId} className="tile-land-pulse" aria-hidden="true" />}
+      <BoardLandingPulse id={landedId} className="tile-land-pulse" />
       {tile.type === 'property' && (
         <div className="tile-bar" style={{ background: GROUP_COLORS[tile.group] }}>
           {own && own.houses > 0 && (
@@ -125,13 +105,13 @@ const TileView = memo(function TileView({ tile, game, language, info, landedId }
       </div>
       {ownable && !own?.mortgaged && (
         <div className={`tile-price-band ${owner ? 'tile-price-band-rent' : ''}`}>
-          {owner ? info?.rentLabel : `$${tile.price}`}
+          {owner ? view.rentLabel : `$${view.price}`}
         </div>
       )}
       {owner && (
         <span className="tile-owner-chip" style={{ borderColor: owner.color }}>{owner.emoji}</span>
       )}
-      {info?.boom && <span className="tile-boom-chip" aria-hidden="true">🔥</span>}
+      {view.boom && <span className="tile-boom-chip" aria-hidden="true">🔥</span>}
       {own?.mortgaged && (
         <div className="tile-mort-stamp">{tr(language, '抵押', 'MORTGAGED', 'HYPOTHÉQUÉ')}</div>
       )}
