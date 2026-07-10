@@ -4,6 +4,7 @@ export type ColorGroup =
   | 'red' | 'yellow' | 'green' | 'darkblue';
 
 export type DiceStyle = 'classic' | 'maple' | 'neon';
+export type Language = 'zh' | 'en' | 'fr';
 export type IndustryTag =
   | 'realEstate'
   | 'finance'
@@ -28,7 +29,10 @@ interface TileBase {
   id: number;
   name: string;      // 中文名
   nameEn: string;    // 英文名
+  nameFr: string;    // 法文名
   instruction: string;
+  instructionEn: string;
+  instructionFr: string;
   industries: IndustryTag[];
 }
 
@@ -60,7 +64,14 @@ export type CardEffect =
   | { kind: 'go-to-jail' }
   | { kind: 'jail-card' };
 
-export interface Card { id: number; deck: 'chance' | 'chest'; text: string; effect: CardEffect; }
+export interface Card {
+  id: number;
+  deck: 'chance' | 'chest';
+  text: string;
+  textEn: string;
+  textFr: string;
+  effect: CardEffect;
+}
 
 // ---------- 玩家 ----------
 export interface PlayerState {
@@ -184,6 +195,7 @@ export interface GameSettings {
   maxTurns: number | null;      // 回合上限, 到达后按净资产分胜负 (null = 玩到只剩一人)
   diceStyle: DiceStyle;
   soundEnabled: boolean;
+  language: Language;
 }
 
 export interface LogEntry { text: string; ts: number; }
@@ -241,6 +253,7 @@ export type GameEvent =
   | { type: 'dice'; playerId: string; dice: [number, number] }
   | { type: 'move'; playerId: string; path: number[]; teleport?: boolean }
   | { type: 'card'; deck: 'chance' | 'chest'; text: string; playerId: string }
+  | { type: 'build'; playerId: string; tileId: number; building: 'house' | 'hotel'; level: number }
   /** 一笔现金转移; from/to 为 null 表示银行(含奖池) */
   | { type: 'cash'; from: string | null; to: string | null; amount: number; tileId?: number }
   | { type: 'bankrupt'; playerId: string; creditorId: string | null }

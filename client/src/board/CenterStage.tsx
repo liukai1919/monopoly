@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ETF_DEFINITIONS, getPlayerToken, getTile } from '@monopoly/shared';
-import type { DiceStyle, EtfId, GameState } from '@monopoly/shared';
+import { getPlayerToken, getTile } from '@monopoly/shared';
+import type { DiceStyle, EtfId, GameState, Language } from '@monopoly/shared';
 import { socket } from '../api';
+import {
+  localizeDeckName, localizeEtfName, localizeTileInstruction, localizeTileName, localizeTokenSubtitle, tr,
+} from '../i18n';
 
 const DICE_PIPS: Record<number, number[]> = {
   1: [5],
@@ -21,8 +24,9 @@ const DIE_ORIENTATION: Record<number, { rx: string; ry: string }> = {
   6: { rx: '0deg', ry: '180deg' },
 };
 
-export default function CenterStage({ game, code, shownDice, diceRolling, rollingPlayerId, cardFlash }: {
+export default function CenterStage({ game, language, code, shownDice, diceRolling, rollingPlayerId, cardFlash }: {
   game: GameState;
+  language: Language;
   code: string;
   shownDice: [number, number] | null;
   diceRolling: boolean;
@@ -36,54 +40,68 @@ export default function CenterStage({ game, code, shownDice, diceRolling, rollin
   return (
     <div className="stage">
       <CanadaAmbience />
-      <div className="stage-brand">🍁 大富翁 · 加拿大版 <span className="stage-code">房间 {code}</span></div>
-      <MarketTape game={game} />
+      <div className="stage-brand">
+        🍁 {tr(language, '大富翁 · 加拿大版', 'Monopoly · Canada Edition', 'Monopoly · Édition Canada')}
+        <span className="stage-code">{tr(language, '房间', 'Room', 'Salle')} {code}</span>
+      </div>
+      <MarketTape game={game} language={language} />
 
       {current && (
         <div className="stage-turn" style={{ borderColor: current.color }}>
           <span className="stage-turn-emoji">{current.emoji}</span>
-          <span>轮到 <b style={{ color: current.color }}>{current.name}</b></span>
-          {phaseHint(game)}
+          <span>
+            {tr(language, '轮到', 'Turn:', 'Tour de')} <b style={{ color: current.color }}>{current.name}</b>
+          </span>
+          {phaseHint(game, language)}
         </div>
       )}
 
       <div className={`stage-dice dice-style-${diceStyle} ${diceRolling ? 'rolling' : ''}`}>
         {diceRolling ? (
-          <><DieFace style={diceStyle} rolling spin={0} /><DieFace style={diceStyle} rolling spin={1} /></>
+          <>
+            <DieFace style={diceStyle} language={language} rolling spin={0} />
+            <DieFace style={diceStyle} language={language} rolling spin={1} />
+          </>
         ) : shownDice ? (
           <>
-            <DieFace style={diceStyle} value={shownDice[0]} spin={0} />
-            <DieFace style={diceStyle} value={shownDice[1]} spin={1} />
+            <DieFace style={diceStyle} language={language} value={shownDice[0]} spin={0} />
+            <DieFace style={diceStyle} language={language} value={shownDice[1]} spin={1} />
           </>
         ) : (
-          <span className="stage-dice-empty">等待掷骰…</span>
+          <span className="stage-dice-empty">
+            {tr(language, '等待掷骰…', 'Waiting for dice...', 'En attente des dés...')}
+          </span>
         )}
       </div>
       {diceRolling && rollingPlayer && (
         <div className="stage-roll-call" style={{ borderColor: rollingPlayer.color }}>
           <span>{rollingPlayer.emoji}</span>
           <b style={{ color: rollingPlayer.color }}>{rollingPlayer.name}</b>
-          <span>正在掷骰</span>
+          <span>{tr(language, '正在掷骰', 'is rolling', 'lance les dés')}</span>
         </div>
       )}
 
       {game.settings.freeParkingPot && (
-        <div className="stage-pot">🅿️ 停车奖池: <b>${game.pot}</b></div>
+        <div className="stage-pot">
+          🅿️ {tr(language, '停车奖池', 'Parking Pot', 'Cagnotte stationnement')}: <b>${game.pot}</b>
+        </div>
       )}
 
-      {game.phase === 'awaiting-debt' && game.debts[0] && <DebtBanner game={game} />}
-      {game.trade && <TradeBanner game={game} />}
-      {game.phase === 'awaiting-card' && game.pendingCard && <CardDrawBanner game={game} />}
-      {game.phase === 'auction' && game.auction && <AuctionPanel game={game} />}
+      {game.phase === 'awaiting-debt' && game.debts[0] && <DebtBanner game={game} language={language} />}
+      {game.trade && <TradeBanner game={game} language={language} />}
+      {game.phase === 'awaiting-card' && game.pendingCard && <CardDrawBanner game={game} language={language} />}
+      {game.phase === 'auction' && game.auction && <AuctionPanel game={game} language={language} />}
 
       {cardFlash && (
         <div className={`card-flash card-${cardFlash.deck}`}>
-          <div className="card-flash-title">{cardFlash.deck === 'chance' ? '❓ 机会' : '🎁 宝箱'}</div>
+          <div className="card-flash-title">
+            {cardFlash.deck === 'chance' ? '❓' : '🎁'} {localizeDeckName(cardFlash.deck as 'chance' | 'chest', language)}
+          </div>
           <div className="card-flash-text">{cardFlash.text}</div>
         </div>
       )}
 
-      {game.phase === 'game-over' && <WinnerOverlay game={game} code={code} />}
+      {game.phase === 'game-over' && <WinnerOverlay game={game} language={language} code={code} />}
     </div>
   );
 }
@@ -106,7 +124,7 @@ function CanadaAmbience() {
   );
 }
 
-function MarketTape({ game }: { game: GameState }) {
+function MarketTape({ game, language }: { game: GameState; language: Language }) {
   const movers = (Object.keys(game.market.etfs) as EtfId[])
     .sort((a, b) => Math.abs(game.market.etfs[b].priceCents - game.market.etfs[b].lastPriceCents)
       - Math.abs(game.market.etfs[a].priceCents - game.market.etfs[a].lastPriceCents))
@@ -120,7 +138,7 @@ function MarketTape({ game }: { game: GameState }) {
           const etf = game.market.etfs[etfId];
           const delta = etf.priceCents - etf.lastPriceCents;
           return (
-            <div className="stage-market-chip" key={etfId} title={ETF_DEFINITIONS[etfId].name}>
+            <div className="stage-market-chip" key={etfId} title={localizeEtfName(etfId, language)}>
               <span>{etfId.replace('CAN-', '')}</span>
               <b>{formatCents(etf.priceCents)}</b>
               <em className={delta >= 0 ? 'market-up' : 'market-down'}>
@@ -131,7 +149,12 @@ function MarketTape({ game }: { game: GameState }) {
         })}
       </div>
       <div className="stage-market-news">
-        {latest ? latest.headline : '财经频道待命：棋盘交易会推动行业 ETF 波动'}
+        {latest ? latest.headline : tr(
+          language,
+          '财经频道待命：棋盘交易会推动行业 ETF 波动',
+          'Market channel standing by: board trades will move industry ETFs',
+          'Chaîne marchés prête: les transactions du plateau feront bouger les FNB sectoriels',
+        )}
       </div>
     </div>
   );
@@ -143,8 +166,8 @@ function formatCents(cents: number): string {
 }
 
 function DieFace({
-  style, value = 1, rolling = false, spin = 0,
-}: { style: DiceStyle; value?: number; rolling?: boolean; spin?: number }) {
+  style, language, value = 1, rolling = false, spin = 0,
+}: { style: DiceStyle; language: Language; value?: number; rolling?: boolean; spin?: number }) {
   const orientation = rolling ? DIE_ORIENTATION[1] : DIE_ORIENTATION[value] ?? DIE_ORIENTATION[1];
   const cubeStyle = {
     '--rx': orientation.rx,
@@ -156,7 +179,9 @@ function DieFace({
     <span
       className={`die die-cube die-cube-${style} ${rolling ? 'die-cube-rolling' : 'die-cube-settled'}`}
       style={cubeStyle}
-      aria-label={rolling ? '骰子滚动中' : `${value} 点`}
+      aria-label={rolling
+        ? tr(language, '骰子滚动中', 'Dice rolling', 'Dés en cours')
+        : tr(language, `${value} 点`, `${value}`, `${value}`)}
     >
       <span className="die-cube-inner">
         {[1, 2, 3, 4, 5, 6].map((face) => (
@@ -174,70 +199,108 @@ function DieFace({
   );
 }
 
-function phaseHint(game: GameState) {
+function phaseHint(game: GameState, language: Language) {
   switch (game.phase) {
     case 'awaiting-buy': {
       const tile = game.pendingBuyTile != null ? getTile(game.pendingBuyTile) : null;
-      return <span className="stage-phase">正在考虑购买 {tile?.name}…</span>;
+      return (
+        <span className="stage-phase">
+          {tr(
+            language,
+            `正在考虑购买 ${tile ? localizeTileName(tile, language) : ''}…`,
+            `Considering ${tile ? localizeTileName(tile, language) : 'a property'}...`,
+            `Décision d’achat: ${tile ? localizeTileName(tile, language) : 'une propriété'}...`,
+          )}
+        </span>
+      );
     }
     case 'awaiting-card': {
       const pending = game.pendingCard;
       return (
         <span className="stage-phase">
-          等待抽{pending?.deck === 'chance' ? '机会' : '宝箱'}卡…
+          {tr(
+            language,
+            `等待抽${pending ? localizeDeckName(pending.deck, language) : ''}卡…`,
+            `Waiting for ${pending ? localizeDeckName(pending.deck, language) : 'card'} draw...`,
+            `En attente d’une carte ${pending ? localizeDeckName(pending.deck, language) : ''}...`,
+          )}
         </span>
       );
     }
-    case 'manage': return <span className="stage-phase">整理资产中…</span>;
+    case 'manage':
+      return <span className="stage-phase">{tr(language, '整理资产中…', 'Managing assets...', 'Gestion des actifs...')}</span>;
     default: return null;
   }
 }
 
-function CardDrawBanner({ game }: { game: GameState }) {
+function CardDrawBanner({ game, language }: { game: GameState; language: Language }) {
   const pending = game.pendingCard!;
   const player = game.players.find((p) => p.id === pending.playerId);
   const tile = getTile(pending.tileId);
-  const deckName = pending.deck === 'chance' ? '机会' : '宝箱';
+  const deckName = localizeDeckName(pending.deck, language);
   return (
     <div className={`stage-card-draw stage-card-draw-${pending.deck}`}>
-      <div className="stage-card-draw-deck">{pending.deck === 'chance' ? '❓' : '🎁'} {deckName}卡</div>
-      <div className="stage-card-draw-player">{player?.emoji} {player?.name} 请在手机上抽牌</div>
-      <div className="stage-card-draw-hint">{tile.instruction}</div>
+      <div className="stage-card-draw-deck">
+        {pending.deck === 'chance' ? '❓' : '🎁'} {deckName}
+      </div>
+      <div className="stage-card-draw-player">
+        {player?.emoji} {player?.name} {tr(language, '请在手机上抽牌', 'draw on your phone', 'piochez sur votre téléphone')}
+      </div>
+      <div className="stage-card-draw-hint">{localizeTileInstruction(tile, language)}</div>
     </div>
   );
 }
 
-function DebtBanner({ game }: { game: GameState }) {
+function DebtBanner({ game, language }: { game: GameState; language: Language }) {
   const debt = game.debts[0]!;
   const debtor = game.players.find((p) => p.id === debt.debtor);
   const creditor = debt.creditor ? game.players.find((p) => p.id === debt.creditor) : null;
   return (
     <div className="stage-banner stage-banner-debt">
-      💰 {debtor?.name} 需要筹 <b>${debt.amount}</b> 付给{creditor ? creditor.name : '银行'}
-      <span className="stage-banner-sub">({debt.reason}) — 正在变卖资产…</span>
+      💰 {tr(
+        language,
+        `${debtor?.name} 需要筹 `,
+        `${debtor?.name} needs to raise `,
+        `${debtor?.name} doit réunir `,
+      )}
+      <b>${debt.amount}</b>
+      {tr(
+        language,
+        ` 付给${creditor ? creditor.name : '银行'}`,
+        ` for ${creditor ? creditor.name : 'the bank'}`,
+        ` pour ${creditor ? creditor.name : 'la banque'}`,
+      )}
+      <span className="stage-banner-sub">
+        ({debt.reason}) - {tr(language, '正在变卖资产…', 'selling assets...', 'vente d’actifs...')}
+      </span>
     </div>
   );
 }
 
-function TradeBanner({ game }: { game: GameState }) {
+function TradeBanner({ game, language }: { game: GameState; language: Language }) {
   const t = game.trade!;
   const from = game.players.find((p) => p.id === t.from);
   const to = game.players.find((p) => p.id === t.to);
   const side = (s: typeof t.give) => {
     const bits: string[] = [];
     if (s.cash > 0) bits.push(`$${s.cash}`);
-    bits.push(...s.properties.map((id) => getTile(id).name));
-    if (s.jailCards > 0) bits.push(`出狱卡×${s.jailCards}`);
-    return bits.length ? bits.join(' + ') : '无';
+    bits.push(...s.properties.map((id) => localizeTileName(getTile(id), language)));
+    if (s.jailCards > 0) bits.push(`${tr(language, '出狱卡', 'Jail card', 'Carte prison')}×${s.jailCards}`);
+    return bits.length ? bits.join(' + ') : tr(language, '无', 'nothing', 'rien');
   };
   return (
     <div className="stage-banner stage-banner-trade">
-      🤝 {from?.name} 向 {to?.name} 提议: 用「{side(t.give)}」换「{side(t.get)}」
+      🤝 {tr(
+        language,
+        `${from?.name} 向 ${to?.name} 提议: 用「${side(t.give)}」换「${side(t.get)}」`,
+        `${from?.name} offers ${to?.name}: "${side(t.give)}" for "${side(t.get)}"`,
+        `${from?.name} propose à ${to?.name}: « ${side(t.give)} » contre « ${side(t.get)} »`,
+      )}
     </div>
   );
 }
 
-function AuctionPanel({ game }: { game: GameState }) {
+function AuctionPanel({ game, language }: { game: GameState; language: Language }) {
   const a = game.auction!;
   const tile = getTile(a.tileId);
   const bidder = a.highBidder ? game.players.find((p) => p.id === a.highBidder) : null;
@@ -251,30 +314,32 @@ function AuctionPanel({ game }: { game: GameState }) {
 
   return (
     <div className="stage-auction">
-      <div className="stage-auction-title">🔨 拍卖: {tile.name}</div>
+      <div className="stage-auction-title">🔨 {tr(language, '拍卖', 'Auction', 'Enchère')}: {localizeTileName(tile, language)}</div>
       <div className="stage-auction-bid">
         {bidder
-          ? <>当前最高 <b>${a.highBid}</b> — {bidder.emoji} {bidder.name}</>
-          : <>尚无人出价 (原价 ${'price' in tile ? tile.price : '—'})</>}
+          ? <>{tr(language, '当前最高', 'High bid', 'Meilleure offre')} <b>${a.highBid}</b> - {bidder.emoji} {bidder.name}</>
+          : <>{tr(language, '尚无人出价', 'No bids yet', 'Aucune offre')} ({tr(language, '原价', 'price', 'prix')} ${'price' in tile ? tile.price : '—'})</>}
       </div>
       <div className="stage-auction-turn">
-        等 {turn?.emoji} {turn?.name} 表态 <span className="stage-auction-timer">{secondsLeft}s</span>
+        {tr(language, '等', 'Waiting for', 'Attend')} {turn?.emoji} {turn?.name}
+        {' '}
+        <span className="stage-auction-timer">{secondsLeft}s</span>
       </div>
     </div>
   );
 }
 
-function WinnerOverlay({ game, code }: { game: GameState; code: string }) {
+function WinnerOverlay({ game, language, code }: { game: GameState; language: Language; code: string }) {
   const winner = game.players.find((p) => p.id === game.winner);
   const token = getPlayerToken(winner?.tokenId);
   return (
     <div className="winner-overlay">
       <Confetti />
       <div className="winner-emoji">{winner?.emoji}</div>
-      <h2>🏆 {winner?.name} 获胜!</h2>
-      {token && <div className="winner-token">{token.name} · {token.subtitle}</div>}
+      <h2>🏆 {tr(language, `${winner?.name} 获胜!`, `${winner?.name} wins!`, `${winner?.name} gagne!`)}</h2>
+      {token && <div className="winner-token">{token.name} · {localizeTokenSubtitle(token, language)}</div>}
       <button className="btn btn-primary btn-xl" onClick={() => socket.emit('lobby:reset', { code })}>
-        🔁 再来一局
+        🔁 {tr(language, '再来一局', 'Play Again', 'Rejouer')}
       </button>
     </div>
   );

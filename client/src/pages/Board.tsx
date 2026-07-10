@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ETF_DEFINITIONS, GROUP_COLORS, GROUP_NAMES, getPlayerToken } from '@monopoly/shared';
+import { GROUP_COLORS, getPlayerToken } from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import type { RoomSnapshot } from '../api';
 import BoardGrid from '../board/BoardGrid';
-import type { MoneyFxItem } from '../board/BoardGrid';
+import type { ConstructionFxItem, MoneyFxItem } from '../board/BoardGrid';
 import CenterStage from '../board/CenterStage';
 import Sidebar from '../board/Sidebar';
+import {
+  LANGUAGES, localizeEtfName, localizeGroupName, localizeMessage, localizeTokenSubtitle, saveLanguage, storedLanguage, tr,
+  type Language,
+} from '../i18n';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MARKET_BREAKING_THRESHOLD_BPS = 300;
@@ -18,21 +22,34 @@ export default function Board() {
   const { code = '' } = useParams();
   const { room, eventsSeq } = useRoom();
   const [error, setError] = useState('');
+  const [language, setLanguage] = useState<Language>(() => storedLanguage());
   const [joinUrl, setJoinUrl] = useState('');
   const soundOnRef = useRef(true);
   const playEvent = useBoardSounds(soundOnRef);
   const roomRef = useRef<RoomSnapshot | null>(null);
+  const activeLanguage = room?.game?.settings.language ?? language;
   useEffect(() => {
     roomRef.current = room;
     soundOnRef.current = room?.game?.settings.soundEnabled ?? true;
   }, [room]);
+  useEffect(() => {
+    if (!room?.language) return;
+    setLanguage(room.language);
+    saveLanguage(room.language);
+  }, [room?.language]);
+
+  function changeLobbyLanguage(next: Language) {
+    setLanguage(next);
+    saveLanguage(next);
+    socket.emit('lobby:language', { code, language: next });
+  }
 
   // 大屏挂载 & 断线重连时 (重新) 认领房间
   useEffect(() => {
     let cancelled = false;
     async function watch() {
       const res = await emitAck('board:watch', { code });
-      if (!cancelled && res?.error) setError(res.error);
+      if (!cancelled && res?.error) setError(localizeMessage(res.error, activeLanguage));
     }
     watch();
     socket.on('connect', watch);
@@ -40,7 +57,7 @@ export default function Board() {
       cancelled = true;
       socket.off('connect', watch);
     };
-  }, [code]);
+  }, [activeLanguage, code]);
 
   // 组装手机扫码地址: http://<局域网IP>:<当前端口>/play/<code>
   useEffect(() => {
@@ -59,6 +76,7 @@ export default function Board() {
   const [cardFlash, setCardFlash] = useState<{ deck: string; text: string } | null>(null);
   const [displayCash, setDisplayCash] = useState<Record<string, number>>({});
   const [moneyFx, setMoneyFx] = useState<MoneyFxItem[]>([]);
+  const [constructionFx, setConstructionFx] = useState<ConstructionFxItem[]>([]);
   const [cashFloats, setCashFloats] = useState<{ id: number; playerId: string; delta: number }[]>([]);
   const [landedFx, setLandedFx] = useState<{ tile: number; id: number } | null>(null);
   const [bankruptFx, setBankruptFx] = useState<{ name: string; emoji: string } | null>(null);
@@ -102,11 +120,11 @@ export default function Board() {
       emoji: player.emoji,
       color: player.color,
       tokenName: token?.name ?? 'Player Token',
-      tokenSubtitle: token?.subtitle ?? '加拿大棋子',
+      tokenSubtitle: token ? localizeTokenSubtitle(token, activeLanguage) : tr(activeLanguage, '加拿大棋子', 'Canadian token', 'Pion canadien'),
     });
     const timer = window.setTimeout(() => setTurnSplash(null), 1800);
     return () => window.clearTimeout(timer);
-  }, [room?.game?.currentPlayer, room?.game?.phase, room?.game?.turnCount]);
+  }, [activeLanguage, room?.game?.currentPlayer, room?.game?.phase, room?.game?.turnCount]);
 
   useEffect(() => {
     const game = room?.game;
@@ -123,12 +141,22 @@ export default function Board() {
       etfId: mover.etfId,
       deltaCents: mover.deltaCents,
       percent: mover.percent,
-      headline: event?.headline ?? `${ETF_DEFINITIONS[mover.etfId].name} 出现显著波动`,
-      driverText: event?.driverText ?? '本轮棋盘经济活动推动市场重估',
+      headline: event?.headline ?? tr(
+        activeLanguage,
+        `${localizeEtfName(mover.etfId, activeLanguage)} 出现显著波动`,
+        `${localizeEtfName(mover.etfId, activeLanguage)} moved sharply`,
+        `${localizeEtfName(mover.etfId, activeLanguage)} bouge fortement`,
+      ),
+      driverText: event?.driverText ?? tr(
+        activeLanguage,
+        '本轮棋盘经济活动推动市场重估',
+        'Board activity this turn pushed the market to reprice',
+        'L’activité du plateau ce tour-ci provoque une réévaluation du marché',
+      ),
     });
     const timer = window.setTimeout(() => setMarketFlash(null), 3200);
     return () => window.clearTimeout(timer);
-  }, [room?.game?.market.etfs, room?.game?.phase, room?.game?.turnCount]);
+  }, [activeLanguage, room?.game?.market.etfs, room?.game?.phase, room?.game?.turnCount]);
 
   useEffect(() => {
     if (!room) return;
@@ -141,6 +169,7 @@ export default function Board() {
         setRollingPlayerId(null);
         setCardFlash(null);
         setMoneyFx([]);
+        setConstructionFx([]);
         setCashFloats([]);
         setLandedFx(null);
         setBankruptFx(null);
@@ -185,9 +214,9 @@ export default function Board() {
         } else {
           for (const pos of e.path) {
             movePiece(e.playerId, pos);
-            await sleep(e.path.length > 12 ? 70 : 150);
+            await sleep(e.path.length > 12 ? 110 : 230);
           }
-          await sleep(200);
+          await sleep(260);
         }
         const dest = e.path[e.path.length - 1];
         if (dest != null) setLandedFx({ tile: dest, id: ++fxIdRef.current });
@@ -199,14 +228,21 @@ export default function Board() {
         spawnMoneyFx(e);
         await tweenCash(e);
         await sleep(240);
+      } else if (e.type === 'build') {
+        spawnConstructionFx(e);
+        await sleep(950);
       } else if (e.type === 'bankrupt') {
         const p = findPlayer(e.playerId);
-        setBankruptFx({ name: p?.name ?? '玩家', emoji: p?.emoji ?? '💀' });
+        setBankruptFx({ name: p?.name ?? tr(activeLanguage, '玩家', 'Player', 'Joueur'), emoji: p?.emoji ?? '💀' });
         await sleep(2000);
         setBankruptFx(null);
       } else if (e.type === 'monopoly') {
         const p = findPlayer(e.playerId);
-        setMonopolyFx({ name: p?.name ?? '玩家', groupName: GROUP_NAMES[e.group], color: GROUP_COLORS[e.group] });
+        setMonopolyFx({
+          name: p?.name ?? tr(activeLanguage, '玩家', 'Player', 'Joueur'),
+          groupName: localizeGroupName(e.group, activeLanguage),
+          color: GROUP_COLORS[e.group],
+        });
         await sleep(2200);
         setMonopolyFx(null);
       }
@@ -221,6 +257,12 @@ export default function Board() {
   function movePiece(playerId: string, pos: number) {
     positionsRef.current = { ...positionsRef.current, [playerId]: pos };
     setPositions(positionsRef.current);
+  }
+
+  function spawnConstructionFx(e: { tileId: number; building: 'house' | 'hotel' }) {
+    const id = ++fxIdRef.current;
+    setConstructionFx((list) => [...list, { id, tileId: e.tileId, building: e.building }]);
+    setTimeout(() => setConstructionFx((list) => list.filter((item) => item.id !== id)), 1500);
   }
 
   /** 棋盘上的飞钱 + 侧边栏浮动增减 */
@@ -274,17 +316,25 @@ export default function Board() {
       <div className="home">
         <div className="home-card">
           <h2>😵 {error}</h2>
-          <a className="btn btn-primary" href="/">回首页重新创建</a>
+          <a className="btn btn-primary" href="/">
+            {tr(activeLanguage, '回首页重新创建', 'Back home to create again', 'Retour à l’accueil pour recréer')}
+          </a>
         </div>
       </div>
     );
   }
 
-  if (!room) return <div className="board-loading">连接服务器中…</div>;
+  if (!room) {
+    return (
+      <div className="board-loading">
+        {tr(activeLanguage, '连接服务器中…', 'Connecting to server...', 'Connexion au serveur...')}
+      </div>
+    );
+  }
 
   // ---------- 大厅 ----------
   if (!room.game) {
-    return <Lobby code={code} joinUrl={joinUrl} room={room} />;
+    return <Lobby code={code} joinUrl={joinUrl} room={room} language={activeLanguage} onLanguageChange={changeLobbyLanguage} />;
   }
 
   // ---------- 对局 ----------
@@ -293,14 +343,17 @@ export default function Board() {
       <div className="board-area">
         <BoardGrid
           game={room.game}
+          language={activeLanguage}
           positions={positions}
           rollingPlayerId={rollingPlayerId}
           diceRolling={diceRolling}
           moneyFx={moneyFx}
+          constructionFx={constructionFx}
           landedFx={landedFx}
         >
           <CenterStage
             game={room.game}
+            language={activeLanguage}
             code={code}
             shownDice={shownDice}
             diceRolling={diceRolling}
@@ -310,14 +363,23 @@ export default function Board() {
         </BoardGrid>
         {bankruptFx && (
           <div className="board-flash bankrupt-flash">
-            <div className="bankrupt-stamp">💥 破产</div>
-            <div className="board-flash-name">{bankruptFx.emoji} {bankruptFx.name} 出局</div>
+            <div className="bankrupt-stamp">{tr(activeLanguage, '💥 破产', '💥 Bankrupt', '💥 Faillite')}</div>
+            <div className="board-flash-name">
+              {tr(activeLanguage, '💥 破产', '💥 Bankrupt', '💥 Faillite')}
+              {' · '}
+              {bankruptFx.emoji} {bankruptFx.name} {tr(activeLanguage, '出局', 'is out', 'est éliminé')}
+            </div>
           </div>
         )}
         {monopolyFx && (
           <div className="board-flash monopoly-flash">
             <div className="monopoly-band" style={{ background: monopolyFx.color }}>
-              🎩 {monopolyFx.name} 垄断了{monopolyFx.groupName}色组!
+              🎩 {tr(
+                activeLanguage,
+                `${monopolyFx.name} 垄断了${monopolyFx.groupName}色组!`,
+                `${monopolyFx.name} completed the ${monopolyFx.groupName} set!`,
+                `${monopolyFx.name} possède tout le groupe ${monopolyFx.groupName}!`,
+              )}
             </div>
           </div>
         )}
@@ -325,7 +387,7 @@ export default function Board() {
           <div className="turn-splash" style={{ '--player-color': turnSplash.color } as CSSProperties}>
             <div className="turn-splash-sweep" />
             <div className="turn-splash-content">
-              <div className="turn-splash-kicker">NEW TURN</div>
+              <div className="turn-splash-kicker">{tr(activeLanguage, '新回合', 'NEW TURN', 'NOUVEAU TOUR')}</div>
               <div className="turn-splash-avatar">{turnSplash.emoji}</div>
               <div className="turn-splash-player">{turnSplash.name}</div>
               <div className="turn-splash-token">{turnSplash.tokenName} · {turnSplash.tokenSubtitle}</div>
@@ -334,7 +396,9 @@ export default function Board() {
         )}
         {marketFlash && (
           <div className={`market-breaking ${marketFlash.deltaCents >= 0 ? 'market-breaking-up' : 'market-breaking-down'}`}>
-            <div className="market-breaking-label">📺 财经快讯</div>
+            <div className="market-breaking-label">
+              📺 {tr(activeLanguage, '财经快讯', 'Market Alert', 'Alerte marchés')}
+            </div>
             <div className="market-breaking-main">
               <span>{marketFlash.etfId}</span>
               <b>
@@ -350,6 +414,7 @@ export default function Board() {
       </div>
       <Sidebar
         game={room.game}
+        language={activeLanguage}
         code={code}
         joinUrl={joinUrl}
         displayCash={displayCash}
@@ -411,6 +476,7 @@ function useBoardSounds(enabledRef: MutableRefObject<boolean>): (event: GameEven
       case 'move': return playMove(ctx, event.path.length);
       case 'card': return playCard(ctx, event.deck);
       case 'cash': return playCash(ctx, event);
+      case 'build': return playBuild(ctx, event.building);
       case 'bankrupt': return playBankrupt(ctx);
       case 'monopoly': return playMonopoly(ctx);
       case 'game-over': return playFanfare(ctx);
@@ -475,6 +541,12 @@ function playCash(ctx: AudioContext, e: { to: string | null; amount: number }) {
   if (e.amount >= 200) beep(ctx, t, 98, 0.32, 0.07, 'sawtooth');
 }
 
+function playBuild(ctx: AudioContext, building: 'house' | 'hotel') {
+  const t = ctx.currentTime;
+  [330, 420, 560].forEach((freq, i) => beep(ctx, t + i * 0.07, freq, 0.08, 0.055, 'triangle'));
+  if (building === 'hotel') beep(ctx, t + 0.26, 880, 0.18, 0.065, 'square');
+}
+
 function playBankrupt(ctx: AudioContext) {
   const t = ctx.currentTime;
   [392, 311, 233, 156].forEach((freq, i) => beep(ctx, t + i * 0.16, freq, 0.22, 0.07, 'sawtooth'));
@@ -488,10 +560,12 @@ function playMonopoly(ctx: AudioContext) {
 
 // ================= 大厅 =================
 
-function Lobby({ code, joinUrl, room }: {
+function Lobby({ code, joinUrl, room, language, onLanguageChange }: {
   code: string;
   joinUrl: string;
   room: NonNullable<ReturnType<typeof useRoom>['room']>;
+  language: Language;
+  onLanguageChange: (language: Language) => void;
 }) {
   const [freeParkingPot, setFreeParkingPot] = useState(false);
   const [maxTurns, setMaxTurns] = useState<number>(0);
@@ -501,25 +575,31 @@ function Lobby({ code, joinUrl, room }: {
 
   async function start() {
     const res = await emitAck('lobby:start', {
-      code, freeParkingPot, maxTurns: maxTurns || null, diceStyle, soundEnabled,
+      code, freeParkingPot, maxTurns: maxTurns || null, diceStyle, soundEnabled, language,
     });
-    if (res?.error) setStartError(res.error);
+    if (res?.error) setStartError(localizeMessage(res.error, language));
   }
 
   return (
     <div className="lobby">
-      <h1 className="lobby-title">🍁 大富翁 · 加拿大版</h1>
+      <h1 className="lobby-title">🍁 {tr(language, '大富翁 · 加拿大版', 'Monopoly · Canada Edition', 'Monopoly · Édition Canada')}</h1>
       <div className="lobby-main">
         <div className="lobby-qr">
           {joinUrl && <QRCodeSVG value={joinUrl} size={220} marginSize={2} />}
-          <div className="lobby-code">房间码 <b>{code}</b></div>
+          <div className="lobby-code">{tr(language, '房间码', 'Room Code', 'Code de salle')} <b>{code}</b></div>
           <div className="lobby-url">{joinUrl}</div>
-          <div className="lobby-tip">📱 手机扫码加入 (需同一 Wi-Fi)</div>
+          <div className="lobby-tip">
+            📱 {tr(language, '手机扫码加入 (需同一 Wi-Fi)', 'Scan on phones to join (same Wi-Fi required)', 'Scannez avec les téléphones (même Wi-Fi requis)')}
+          </div>
         </div>
 
         <div className="lobby-players">
-          <h3>玩家 ({room.lobby.length}/6)</h3>
-          {room.lobby.length === 0 && <p className="lobby-empty">等待玩家扫码加入…</p>}
+          <h3>{tr(language, '玩家', 'Players', 'Joueurs')} ({room.lobby.length}/6)</h3>
+          {room.lobby.length === 0 && (
+            <p className="lobby-empty">
+              {tr(language, '等待玩家扫码加入…', 'Waiting for players to scan in...', 'En attente des joueurs...')}
+            </p>
+          )}
           <ul>
             {room.lobby.map((p) => (
               <li key={p.id} className="lobby-player" style={{ borderColor: p.color }}>
@@ -527,38 +607,51 @@ function Lobby({ code, joinUrl, room }: {
                 <span className="lobby-player-name">{p.name}</span>
                 {getPlayerToken(p.tokenId) && <span className="lobby-token-name">{getPlayerToken(p.tokenId)?.name}</span>}
                 {p.isAi && <span className="tag">AI</span>}
-                {!p.isAi && !p.connected && <span className="tag tag-warn">离线</span>}
+                {!p.isAi && !p.connected && <span className="tag tag-warn">{tr(language, '离线', 'Offline', 'Hors ligne')}</span>}
               </li>
             ))}
           </ul>
           <div className="lobby-ai-btns">
-            <button className="btn" onClick={() => socket.emit('lobby:add-ai', { code })}>➕ 添加 AI</button>
-            <button className="btn" onClick={() => socket.emit('lobby:remove-ai', { code })}>➖ 移除 AI</button>
+            <button className="btn" onClick={() => socket.emit('lobby:add-ai', { code })}>
+              ➕ {tr(language, '添加 AI', 'Add AI', 'Ajouter IA')}
+            </button>
+            <button className="btn" onClick={() => socket.emit('lobby:remove-ai', { code })}>
+              ➖ {tr(language, '移除 AI', 'Remove AI', 'Retirer IA')}
+            </button>
           </div>
 
           <div className="lobby-settings">
+            <div className="lobby-setting-row">
+              <span>{tr(language, '语言', 'Language', 'Langue')}</span>
+              <LanguageSwitch language={language} onChange={onLanguageChange} />
+            </div>
             <label>
               <input
                 type="checkbox"
                 checked={freeParkingPot}
                 onChange={(e) => setFreeParkingPot(e.target.checked)}
               />
-              免费停车奖池 (房规: 税款入池, 踩中全拿)
+              {tr(
+                language,
+                '免费停车奖池 (房规: 税款入池, 踩中全拿)',
+                'Free Parking pot (taxes go into the pot)',
+                'Cagnotte Stationnement gratuit (les taxes vont dans la cagnotte)',
+              )}
             </label>
             <label>
-              时长
+              {tr(language, '时长', 'Length', 'Durée')}
               <select value={maxTurns} onChange={(e) => setMaxTurns(Number(e.target.value))}>
-                <option value={0}>经典 (玩到只剩一人)</option>
-                <option value={200}>约 1 小时 (200 手结算)</option>
-                <option value={400}>约 2 小时 (400 手结算)</option>
+                <option value={0}>{tr(language, '经典 (玩到只剩一人)', 'Classic (until one player remains)', 'Classique (jusqu’au dernier joueur)')}</option>
+                <option value={200}>{tr(language, '约 1 小时 (200 手结算)', 'About 1 hour (settle after 200 turns)', 'Environ 1 h (règlement après 200 tours)')}</option>
+                <option value={400}>{tr(language, '约 2 小时 (400 手结算)', 'About 2 hours (settle after 400 turns)', 'Environ 2 h (règlement après 400 tours)')}</option>
               </select>
             </label>
             <label>
-              骰子风格
+              {tr(language, '骰子风格', 'Dice Style', 'Style de dés')}
               <select value={diceStyle} onChange={(e) => setDiceStyle(e.target.value as DiceStyle)}>
-                <option value="classic">经典点数</option>
-                <option value="maple">枫叶红</option>
-                <option value="neon">数字霓虹</option>
+                <option value="classic">{tr(language, '经典点数', 'Classic Pips', 'Points classiques')}</option>
+                <option value="maple">{tr(language, '枫叶红', 'Maple Red', 'Rouge érable')}</option>
+                <option value="neon">{tr(language, '数字霓虹', 'Neon Numbers', 'Néon numérique')}</option>
               </select>
             </label>
             <label>
@@ -567,16 +660,33 @@ function Lobby({ code, joinUrl, room }: {
                 checked={soundEnabled}
                 onChange={(e) => setSoundEnabled(e.target.checked)}
               />
-              开启音效
+              {tr(language, '开启音效', 'Sound effects', 'Effets sonores')}
             </label>
           </div>
 
           <button className="btn btn-primary btn-xl" onClick={start} disabled={room.lobby.length < 2}>
-            🎲 开始游戏
+            🎲 {tr(language, '开始游戏', 'Start Game', 'Commencer')}
           </button>
           {startError && <p className="home-error">{startError}</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LanguageSwitch({ language, onChange }: { language: Language; onChange: (language: Language) => void }) {
+  return (
+    <div className="language-switch language-switch-compact" aria-label={tr(language, '语言', 'Language', 'Langue')}>
+      {LANGUAGES.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={language === item.id ? 'active' : ''}
+          onClick={() => onChange(item.id)}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }

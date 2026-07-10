@@ -1,6 +1,7 @@
 export * from './types';
 export * from './board';
 export * from './cards';
+export * from './i18n';
 export * from './market';
 export * from './portfolio';
 export * from './playerTokens';

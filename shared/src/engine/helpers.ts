@@ -110,7 +110,10 @@ export function netWorth(s: GameState, playerId: string): number {
   return total;
 }
 
-/** 校验能否在 tileId 盖一栋房 (或升级酒店)。返回 null 表示可以, 否则返回原因 */
+/**
+ * 校验能否在 tileId 盖一栋房 (或升级酒店)。返回 null 表示可以, 否则返回原因。
+ * 房规: 只有棋子停在该色组的地块上时才能盖 (离开色组就不能盖了)。
+ */
 export function canBuild(s: GameState, playerId: string, tileId: number): string | null {
   const tile = getTile(tileId);
   if (tile.type !== 'property') return '该地块不能盖房';
@@ -118,6 +121,11 @@ export function canBuild(s: GameState, playerId: string, tileId: number): string
   if (own?.owner !== playerId) return '这不是你的地';
   if (!ownsFullGroup(s, playerId, tile.group)) return '需要集齐同色地块才能盖房';
   const group = groupTiles(tile.group);
+  const player = getPlayer(s, playerId);
+  if (!group.some((t) => t.id === player.position)) return '需要停在这个色组的地块上才能盖房';
+  const occupiedByOpponent = group.some((t) =>
+    s.players.some((p) => !p.bankrupt && p.id !== playerId && p.position === t.id));
+  if (occupiedByOpponent) return '有其他玩家停在同色组上, 暂时不能盖房';
   if (group.some((t) => s.ownership[t.id]?.mortgaged)) return '同色组有地块被抵押, 不能盖房';
   if (own.houses >= 5) return '已经是酒店了';
   const minHouses = Math.min(...group.map((t) => s.ownership[t.id]!.houses));
@@ -127,7 +135,6 @@ export function canBuild(s: GameState, playerId: string, tileId: number): string
   } else if (s.housesRemaining <= 0) {
     return '银行的房子已经发完了';
   }
-  const player = getPlayer(s, playerId);
   if (player.cash < tile.houseCost) return '现金不足';
   return null;
 }

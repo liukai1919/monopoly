@@ -1,6 +1,6 @@
-import type { GameState } from '@monopoly/shared';
+import type { GameState, Language } from '@monopoly/shared';
 import {
-  DEFAULT_PLAYER_TOKEN_ID, PLAYER_TOKENS, getPlayerToken, getPlayerTokenByEmoji,
+  DEFAULT_LANGUAGE, DEFAULT_PLAYER_TOKEN_ID, PLAYER_TOKENS, getPlayerToken, getPlayerTokenByEmoji,
 } from '@monopoly/shared';
 
 export interface LobbyPlayer {
@@ -15,11 +15,13 @@ export interface LobbyPlayer {
 
 export interface Room {
   code: string;
+  language: Language;
   lobby: LobbyPlayer[];
   game: GameState | null;
   lastActivity: number;
   aiTimer: ReturnType<typeof setTimeout> | null;
   auctionTimer: ReturnType<typeof setTimeout> | null;
+  actionLockedUntil: number;
 }
 
 export const PLAYER_COLORS = ['#E63946', '#2667C9', '#2A9D8F', '#E88C1F', '#9B5DE5', '#D81B7F'];
@@ -33,18 +35,20 @@ const ROOM_TTL = 12 * 60 * 60 * 1000;
 
 const rooms = new Map<string, Room>();
 
-export function createRoom(): Room {
+export function createRoom(language: Language = DEFAULT_LANGUAGE): Room {
   let code = '';
   do {
     code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   } while (rooms.has(code));
   const room: Room = {
     code,
+    language,
     lobby: [],
     game: null,
     lastActivity: Date.now(),
     aiTimer: null,
     auctionTimer: null,
+    actionLockedUntil: 0,
   };
   rooms.set(code, room);
   return room;

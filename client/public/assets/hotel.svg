@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="hotel">
+  <defs>
+    <linearGradient id="hotelWall" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#cdd8eb"/>
+    </linearGradient>
+    <linearGradient id="hotelRoof" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#3658c9"/>
+      <stop offset="1" stop-color="#19235f"/>
+    </linearGradient>
+  </defs>
+  <rect x="18" y="26" width="60" height="62" rx="5" fill="url(#hotelWall)" stroke="#1d2948" stroke-width="4"/>
+  <path d="M13 29h70L75 14H21Z" fill="url(#hotelRoof)" stroke="#1d2948" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M28 15V7h40v8" fill="none" stroke="#1d2948" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 88V68a4 4 0 0 1 4-4h24a4 4 0 0 1 4 4v20Z" fill="#243a7a" stroke="#1d2948" stroke-width="4"/>
+  <g fill="#72d2ff" stroke="#1d2948" stroke-width="3">
+    <rect x="28" y="36" width="10" height="10" rx="2"/>
+    <rect x="43" y="36" width="10" height="10" rx="2"/>
+    <rect x="58" y="36" width="10" height="10" rx="2"/>
+    <rect x="28" y="52" width="10" height="10" rx="2"/>
+    <rect x="43" y="52" width="10" height="10" rx="2"/>
+    <rect x="58" y="52" width="10" height="10" rx="2"/>
+  </g>
+  <path d="M37 21h22" stroke="#ffffff99" stroke-width="4" stroke-linecap="round"/>
+</svg>

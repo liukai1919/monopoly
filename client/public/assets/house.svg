@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="house">
+  <defs>
+    <linearGradient id="wall" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff8e8"/>
+      <stop offset="1" stop-color="#f0cf9a"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#e24545"/>
+      <stop offset="1" stop-color="#9f1f31"/>
+    </linearGradient>
+  </defs>
+  <path d="M14 45 48 16l34 29v38a5 5 0 0 1-5 5H19a5 5 0 0 1-5-5Z" fill="url(#wall)" stroke="#4f2a18" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M8 48 48 13l40 35-7 8-33-29-33 29Z" fill="url(#roof)" stroke="#4f2a18" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M38 88V61a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v27Z" fill="#6b3d24" stroke="#4f2a18" stroke-width="4"/>
+  <rect x="22" y="56" width="12" height="12" rx="2" fill="#89cdf7" stroke="#4f2a18" stroke-width="3"/>
+  <rect x="62" y="56" width="12" height="12" rx="2" fill="#89cdf7" stroke="#4f2a18" stroke-width="3"/>
+  <path d="M48 27v14" stroke="#ffffff80" stroke-width="4" stroke-linecap="round"/>
+</svg>
