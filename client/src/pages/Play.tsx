@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
-import { PLAYER_TOKENS, getPlayerToken, getTile, whoMustAct } from '@monopoly/shared';
+import { PLAYER_TOKENS, actionBypassesPresentationLock, getPlayerToken, getTile, whoMustAct } from '@monopoly/shared';
 import type { Action, GameEvent, GameState, PlayerToken } from '@monopoly/shared';
 import { emitAck, myPlayerId, sendAction, socket, useRoom } from '../api';
 import ActionPanel from '../play/ActionPanel';
@@ -72,8 +72,7 @@ export default function Play() {
   }, [code, join, tokenId]);
 
   const act = useCallback(async (action: Action) => {
-    const bypassesActionLock = action.type === 'buy-etf' || action.type === 'sell-etf';
-    if (actionLocked && !bypassesActionLock) {
+    if (actionLocked && !actionBypassesPresentationLock(action)) {
       showToast(tr(language, '大屏动画还在播放, 稍等一下', 'The big-screen animation is still playing. Give it a moment.', 'L’animation du grand écran est encore en cours. Un instant.'));
       return;
     }

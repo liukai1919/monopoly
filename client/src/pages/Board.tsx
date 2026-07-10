@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { GROUP_COLORS, getPlayerToken } from '@monopoly/shared';
+import { GROUP_COLORS, PRESENTATION_TIMING_MS, getPlayerToken, presentationForGameEvent } from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameEvent, GameState } from '@monopoly/shared';
 import { emitAck, fetchLanInfo, socket, useRoom } from '../api';
 import type { RoomSnapshot } from '../api';
@@ -122,7 +122,7 @@ export default function Board() {
       tokenName: token?.name ?? 'Player Token',
       tokenSubtitle: token ? localizeTokenSubtitle(token, activeLanguage) : tr(activeLanguage, '加拿大棋子', 'Canadian token', 'Pion canadien'),
     });
-    const timer = window.setTimeout(() => setTurnSplash(null), 1800);
+    const timer = window.setTimeout(() => setTurnSplash(null), PRESENTATION_TIMING_MS.turnSplash);
     return () => window.clearTimeout(timer);
   }, [activeLanguage, room?.game?.currentPlayer, room?.game?.phase, room?.game?.turnCount]);
 
@@ -154,7 +154,7 @@ export default function Board() {
         'L’activité du plateau ce tour-ci provoque une réévaluation du marché',
       ),
     });
-    const timer = window.setTimeout(() => setMarketFlash(null), 3200);
+    const timer = window.setTimeout(() => setMarketFlash(null), PRESENTATION_TIMING_MS.marketFlash);
     return () => window.clearTimeout(timer);
   }, [activeLanguage, room?.game?.market.etfs, room?.game?.phase, room?.game?.turnCount]);
 
@@ -196,55 +196,58 @@ export default function Board() {
     if (busyRef.current) return;
     busyRef.current = true;
     while (queueRef.current.length > 0) {
-      const e = queueRef.current.shift()!;
-      playEvent(e);
-      if (e.type === 'dice') {
-        setRollingPlayerId(e.playerId);
+      const presentation = presentationForGameEvent(queueRef.current.shift()!);
+      playEvent(presentation.event);
+      if (presentation.kind === 'dice') {
+        setRollingPlayerId(presentation.event.playerId);
         setDiceRolling(true);
-        await sleep(650);
+        await sleep(presentation.rollingMs);
         setDiceRolling(false);
-        setShownDice(e.dice);
-        await sleep(350);
+        setShownDice(presentation.event.dice);
+        await sleep(presentation.revealMs);
         setRollingPlayerId(null);
-      } else if (e.type === 'move') {
-        if (e.teleport) {
-          await sleep(250);
-          movePiece(e.playerId, e.path[0]!);
-          await sleep(450);
+      } else if (presentation.kind === 'move') {
+        const { event } = presentation;
+        if (event.teleport) {
+          await sleep(presentation.teleportLeadMs);
+          movePiece(event.playerId, event.path[0]!);
+          await sleep(presentation.teleportSettleMs);
         } else {
-          for (const pos of e.path) {
-            movePiece(e.playerId, pos);
-            await sleep(e.path.length > 12 ? 110 : 230);
+          for (const pos of event.path) {
+            movePiece(event.playerId, pos);
+            await sleep(presentation.stepMs);
           }
-          await sleep(260);
+          await sleep(presentation.settleMs);
         }
-        const dest = e.path[e.path.length - 1];
+        const dest = event.path[event.path.length - 1];
         if (dest != null) setLandedFx({ tile: dest, id: ++fxIdRef.current });
-      } else if (e.type === 'card') {
-        setCardFlash({ deck: e.deck, text: e.text });
-        await sleep(2600);
+      } else if (presentation.kind === 'card') {
+        setCardFlash({ deck: presentation.event.deck, text: presentation.event.text });
+        await sleep(presentation.visibleMs);
         setCardFlash(null);
-      } else if (e.type === 'cash') {
-        spawnMoneyFx(e);
-        await tweenCash(e);
-        await sleep(240);
-      } else if (e.type === 'build') {
-        spawnConstructionFx(e);
-        await sleep(950);
-      } else if (e.type === 'bankrupt') {
-        const p = findPlayer(e.playerId);
+      } else if (presentation.kind === 'cash') {
+        spawnMoneyFx(presentation.event);
+        await tweenCash(presentation.event, presentation.tweenSteps, presentation.tweenStepMs);
+        await sleep(presentation.settleMs);
+      } else if (presentation.kind === 'build') {
+        spawnConstructionFx(presentation.event);
+        await sleep(presentation.visibleMs);
+      } else if (presentation.kind === 'bankrupt') {
+        const p = findPlayer(presentation.event.playerId);
         setBankruptFx({ name: p?.name ?? tr(activeLanguage, '玩家', 'Player', 'Joueur'), emoji: p?.emoji ?? '💀' });
-        await sleep(2000);
+        await sleep(presentation.visibleMs);
         setBankruptFx(null);
-      } else if (e.type === 'monopoly') {
-        const p = findPlayer(e.playerId);
+      } else if (presentation.kind === 'monopoly') {
+        const p = findPlayer(presentation.event.playerId);
         setMonopolyFx({
           name: p?.name ?? tr(activeLanguage, '玩家', 'Player', 'Joueur'),
-          groupName: localizeGroupName(e.group, activeLanguage),
-          color: GROUP_COLORS[e.group],
+          groupName: localizeGroupName(presentation.event.group, activeLanguage),
+          color: GROUP_COLORS[presentation.event.group],
         });
-        await sleep(2200);
+        await sleep(presentation.visibleMs);
         setMonopolyFx(null);
+      } else if (presentation.kind === 'game-over') {
+        await sleep(presentation.visibleMs);
       }
     }
     busyRef.current = false;
@@ -288,7 +291,11 @@ export default function Board() {
   }
 
   /** 现金数字滚动到位, 与飞钱动画同步 */
-  async function tweenCash(e: { from: string | null; to: string | null; amount: number }) {
+  async function tweenCash(
+    e: { from: string | null; to: string | null; amount: number },
+    steps: number,
+    stepMs: number,
+  ) {
     const targets: [string, number, number][] = [];
     if (e.from) {
       const cur = cashRef.current[e.from] ?? 0;
@@ -299,7 +306,6 @@ export default function Board() {
       targets.push([e.to, cur, cur + e.amount]);
     }
     if (targets.length === 0) return;
-    const steps = 8;
     for (let i = 1; i <= steps; i++) {
       const next = { ...cashRef.current };
       for (const [pid, fromVal, toVal] of targets) {
@@ -307,7 +313,7 @@ export default function Board() {
       }
       cashRef.current = next;
       setDisplayCash(next);
-      await sleep(55);
+      await sleep(stepMs);
     }
   }
 

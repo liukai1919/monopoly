@@ -279,30 +279,23 @@ describe('盖房规则', () => {
     expect(s.ownership[19]!.houses).toBe(1);
   });
 
-  test('其他玩家停在同色组上时不能临时盖房', () => {
-    const s = withBrown(newGame());
+  test('经典规则允许在对手停留于色组时盖房', () => {
+    let s = withBrown(newGame());
     player(s, 'a').position = 1;
     player(s, 'b').position = 3;
 
-    expect(canBuild(s, 'a', 1)).toContain('其他玩家');
-    expect(applyAction(s, 'a', { type: 'build', tileId: 1 }).ok).toBe(false);
+    s = mustApply(s, 'a', { type: 'build', tileId: 1 });
+
+    expect(s.ownership[1]!.houses).toBe(1);
   });
 
-  test('停在色组上才能盖房, 掷骰离开后不能再盖', () => {
+  test('经典规则允许玩家从棋盘任意位置盖房', () => {
     let s = withBrown(newGame());
-    player(s, 'a').position = 1; // 停在棕色组上
+    player(s, 'a').position = 10;
 
-    s = mustApply(s, 'a', { type: 'build', tileId: 1 }); // 掷骰前, 站在组内可以盖
-    s = mustApply(s, 'a', { type: 'build', tileId: 3 }); // 站在 1 号也能给同组 3 号盖
+    s = mustApply(s, 'a', { type: 'build', tileId: 1 });
+
     expect(s.ownership[1]!.houses).toBe(1);
-    expect(s.ownership[3]!.houses).toBe(1);
-
-    s = mustApply(s, 'a', { type: 'roll' }, diceRng(4, 5)); // 1 + 9 = 10, 离开色组
-    expect(player(s, 'a').position).toBe(10);
-    expect(s.phase).toBe('manage');
-
-    expect(canBuild(s, 'a', 1)).toContain('需要停在');
-    expect(applyAction(s, 'a', { type: 'build', tileId: 1 }).ok).toBe(false);
   });
 
   test('建房和酒店升级会广播施工动画事件', () => {

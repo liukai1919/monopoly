@@ -3,10 +3,12 @@
  * Socket.IO 通道打完一整局。用法: npx tsx scripts/e2e.ts
  */
 import { io, type Socket } from 'socket.io-client';
-import { decideAction, netWorth, whoMustAct } from '@monopoly/shared';
+import { actionBypassesPresentationLock, decideAction, netWorth, whoMustAct } from '@monopoly/shared';
 import type { GameState } from '@monopoly/shared';
 
 const BASE = process.env.BASE ?? 'http://localhost:3000';
+const MAX_TURNS = Number(process.env.E2E_MAX_TURNS ?? 12);
+const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS ?? 240_000);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function emitAck<T = { ok?: boolean; error?: string; code?: string }>(
@@ -46,9 +48,9 @@ async function main() {
   board.emit('lobby:add-ai', { code });
   await sleep(400);
 
-  const start = await emitAck(board, 'lobby:start', { code, maxTurns: 300 });
+  const start = await emitAck(board, 'lobby:start', { code, maxTurns: MAX_TURNS });
   if (start.error) throw new Error(`开局失败: ${start.error}`);
-  console.log('✅ 游戏开始 (2 真人模拟 + 2 AI, 300 手封顶)');
+  console.log(`✅ 游戏开始 (2 真人模拟 + 2 AI, ${MAX_TURNS} 手封顶)`);
 
   let latest: GameState | null = null;
   let done = false;
@@ -56,9 +58,12 @@ async function main() {
   let rejected = 0;
   let printedTurn = 0;
   let inflight = false;
+  let actionLockedUntil = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  board.on('room:update', (snap: { game: GameState | null }) => {
+  board.on('room:update', (snap: { game: GameState | null; actionLockRemainingMs?: number }) => {
     latest = snap.game;
+    actionLockedUntil = Date.now() + Math.max(0, snap.actionLockRemainingMs ?? 0);
     if (!latest) return;
     if (latest.turnCount >= printedTurn + 50) {
       printedTurn = latest.turnCount;
@@ -81,6 +86,11 @@ async function main() {
     if (!humanId) return;
     const action = decideAction(g, humanId);
     if (!action) return;
+    const lockRemaining = Math.max(0, actionLockedUntil - Date.now());
+    if (lockRemaining > 0 && !actionBypassesPresentationLock(action)) {
+      scheduleHumanAct(lockRemaining + 25);
+      return;
+    }
     inflight = true;
     sockets.get(humanId)!.emit('game:action', { code, action }, (res: { error?: string }) => {
       inflight = false;
@@ -88,12 +98,20 @@ async function main() {
       if (res?.error) {
         rejected += 1;
         console.log(`  ⚠️ ${humanId} 的 ${action.type} 被拒: ${res.error}`);
-        setTimeout(tryHumanAct, 150);
+        scheduleHumanAct(250);
       }
     });
   }
 
-  const deadline = Date.now() + 240_000;
+  function scheduleHumanAct(delayMs: number) {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      tryHumanAct();
+    }, delayMs);
+  }
+
+  const deadline = Date.now() + TIMEOUT_MS;
   while (!done && Date.now() < deadline) {
     await sleep(500);
     tryHumanAct(); // 保险丝: 防止 broadcast 边缘情况漏触发
