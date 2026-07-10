@@ -70,7 +70,7 @@ describe('ETF trading and accounting', () => {
     player(s, 'a').cash = 0;
     s.portfolios.a!['CAN-REAL'] = 2;
     s.portfolios.b!['CAN-FIN'] = 1;
-    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt' });
+    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt', kind: 'other' });
     s.phase = 'awaiting-debt';
 
     s = mustApply(s, 'b', { type: 'sell-etf', etfId: 'CAN-FIN', shares: 1 });
@@ -86,7 +86,7 @@ describe('ETF trading and accounting', () => {
     let s = newGame();
     player(s, 'a').cash = 0;
     s.portfolios.a!['CAN-REAL'] = 2;
-    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt' });
+    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt', kind: 'other' });
     s.phase = 'awaiting-debt';
 
     s = mustApply(s, 'a', { type: 'sell-etf', etfId: 'CAN-REAL', shares: 2 });
@@ -123,7 +123,7 @@ describe('ETF trading and accounting', () => {
     player(s, 'a').cash = 0;
     s.portfolios.a!['CAN-REAL'] = 2;
     s.ownership[39]!.owner = 'a';
-    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt' });
+    s.debts.push({ debtor: 'a', creditor: null, amount: 100, reason: 'test debt', kind: 'other' });
     s.phase = 'awaiting-debt';
 
     expect(decideAction(s, 'a')).toEqual({ type: 'sell-etf', etfId: 'CAN-REAL', shares: 2 });
@@ -133,7 +133,7 @@ describe('ETF trading and accounting', () => {
     let s = newGame();
     player(s, 'a').cash = 0;
     s.portfolios.a!['CAN-REAL'] = 2;
-    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: 'test debt' });
+    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: 'test debt', kind: 'other' });
     s.phase = 'awaiting-debt';
 
     s = mustApply(s, 'a', { type: 'declare-bankruptcy' });

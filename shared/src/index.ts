@@ -7,5 +7,7 @@ export * from './playerTokens';
 export * from './pricingEngine';
 export * from './engine/helpers';
 export { AUCTION_TURN_MS, applyAction, createGame, settleGame } from './engine/game';
+export * from './engine/settlement';
+export { etfUnrealizedCents } from './engine/stats';
 export type { SeatInfo } from './engine/game';
 export { decideAction } from './ai/simpleAi';

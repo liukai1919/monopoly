@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
-  applyAction, createGame, decideAction, whoMustAct,
+  applyAction, buildSettlementReport, createGame, decideAction, netWorth, whoMustAct,
 } from '../index';
-import type { GameState, RNG, SeatInfo } from '../index';
+import type { EtfId, GameState, RNG, SeatInfo } from '../index';
 
 function mulberry32(seed: number): RNG {
   let a = seed >>> 0;
@@ -38,6 +38,36 @@ function checkInvariants(s: GameState, game: number, step: number): void {
       expect(owner, `${where}: 地块 ${tileId} 属于未知玩家`).toBeDefined();
       expect(owner!.bankrupt, `${where}: 地块 ${tileId} 属于破产玩家`).toBe(false);
     }
+  }
+  checkStatsInvariants(s, where);
+}
+
+function checkStatsInvariants(s: GameState, where: string): void {
+  let totalRentPaid = 0;
+  let totalRentReceived = 0;
+  for (const p of s.players) {
+    const st = s.stats.players[p.id];
+    expect(st, `${where}: ${p.name} 没有统计记录`).toBeDefined();
+    totalRentPaid += st!.rentPaid;
+    totalRentReceived += st!.rentReceived;
+    for (const v of [
+      st!.rentPaid, st!.rentReceived, st!.taxesPaid, st!.salaryReceived, st!.cardGains,
+      st!.cardLosses, st!.jailVisits, st!.propertiesBought, st!.auctionWins, st!.buildSpend,
+      st!.etf.investedCents,
+    ]) {
+      expect(v, `${where}: ${p.name} 统计计数为负`).toBeGreaterThanOrEqual(0);
+    }
+    const portfolio = s.portfolios[p.id];
+    for (const [etfId, cents] of Object.entries(st!.etf.costCents)) {
+      expect(cents, `${where}: ${p.name} 的 ${etfId} 成本为负`).toBeGreaterThanOrEqual(0);
+      if ((portfolio?.[etfId as EtfId] ?? 0) === 0) {
+        expect(cents, `${where}: ${p.name} 的 ${etfId} 清仓后成本未清零`).toBe(0);
+      }
+    }
+  }
+  expect(totalRentPaid, `${where}: 租金收支不守恒`).toBe(totalRentReceived);
+  for (const row of s.stats.netWorthHistory) {
+    expect(row, `${where}: 净资产快照列数错误`).toHaveLength(s.players.length);
   }
 }
 
@@ -80,6 +110,15 @@ describe('AI 自动对局模拟', () => {
         expect(s.winner, `第 ${game} 局没有胜者`).not.toBeNull();
         const alive = s.players.filter((p) => !p.bankrupt);
         if (alive.length === 1) finishedByBankruptcy += 1;
+
+        // 终局报表: 不抛错, 胜者排第一, 终局快照与实际净资产一致
+        const report = buildSettlementReport(s);
+        expect(report.ranking[0]!.playerId, `第 ${game} 局报表胜者不在第一`).toBe(s.winner);
+        const lastRow = s.stats.netWorthHistory.at(-1)!;
+        s.players.forEach((p, i) => {
+          expect(lastRow[i], `第 ${game} 局 ${p.name} 终局快照与净资产不一致`)
+            .toBe(p.bankrupt ? 0 : netWorth(s, p.id));
+        });
       }
       // 至少要有相当比例的对局是真刀真枪打到破产结束的
       expect(finishedByBankruptcy).toBeGreaterThan(20);

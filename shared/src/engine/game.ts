@@ -8,13 +8,17 @@ import { quoteEtfBuyCostCents, quoteEtfSale } from '../portfolio';
 import { settleMarketRound } from '../pricingEngine';
 import type {
   Action, ApplyResult, AuctionState, Card, ColorGroup, GameEvent, GameSettings, GameState,
-  EtfId, IndustryTag, PlayerState, RNG, TradeSide,
+  EtfId, IndustryTag, PaymentKind, PlayerState, RNG, TradeSide,
 } from '../types';
 import {
   alivePlayers, canBuild, canMortgage, canSellHouse, canUnmortgage, computeRent,
   getPlayer, getTile, liquidationValue, mortgageValue, netWorth, ownsFullGroup,
   playerProperties, unmortgageCost,
 } from './helpers';
+import {
+  createGameStats, playerStats, recordCardGain, recordEtfBuy, recordEtfSell,
+  recordPayment, snapshotNetWorth, transferEtfBasisOnBankruptcy,
+} from './stats';
 
 export const AUCTION_TURN_MS = 25_000;
 const JAIL_CARD_IDS = { chance: 8, chest: 104 } as const;
@@ -69,6 +73,7 @@ export function createGame(
     winner: null,
     settings: { freeParkingPot: false, maxTurns: null, diceStyle: 'classic', soundEnabled: true, ...settings },
     log: [],
+    stats: createGameStats(players),
   };
   log(state, `游戏开始! 每人 $${START_CASH}, ${players[0]!.name} 先行`);
   return state;
@@ -89,6 +94,7 @@ export function applyAction(
   state: GameState, playerId: string, action: Action, rng: RNG = Math.random,
 ): ApplyResult {
   const s = structuredClone(state);
+  s.stats ??= createGameStats(s.players);
   const ctx: Ctx = { events: [], rng };
   const player = s.players.find((p) => p.id === playerId);
   if (!player) return { ok: false, error: '未知玩家' };
@@ -102,6 +108,7 @@ export function applyAction(
 
 export function settleGame(state: GameState): ApplyResult {
   const s = structuredClone(state);
+  s.stats ??= createGameStats(s.players);
   const ctx: Ctx = { events: [], rng: Math.random };
   const error = manualSettlementError(s);
   if (error) return { ok: false, error };
@@ -124,7 +131,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
     case 'jail-pay': {
       if (s.phase !== 'awaiting-roll' || !isCurrent || !player.inJail) return '现在不能保释';
       if (player.cash < JAIL_FINE) return '现金不足';
-      pay(s, ctx, player, JAIL_FINE, null, true, JAIL_POS);
+      pay(s, ctx, player, JAIL_FINE, null, true, JAIL_POS, 'bail');
       player.inJail = false;
       player.jailTurns = 0;
       log(s, `${player.name} 交了 $${JAIL_FINE} 保释金出狱`);
@@ -158,6 +165,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       player.cash -= tile.price;
       s.ownership[tile.id]!.owner = player.id;
       s.pendingBuyTile = null;
+      playerStats(s, player.id).propertiesBought += 1;
       ctx.events.push({ type: 'cash', from: player.id, to: null, amount: tile.price, tileId: tile.id });
       recordMarketEvent(s, {
         kind: 'property-bought',
@@ -209,6 +217,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       if (tile.type !== 'property') return '该地块不能盖房';
       const own = s.ownership[tile.id]!;
       player.cash -= tile.houseCost;
+      playerStats(s, player.id).buildSpend += tile.houseCost;
       own.houses += 1;
       if (own.houses === 5) {
         s.hotelsRemaining -= 1;
@@ -323,6 +332,7 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       if (player.cash < costCash) return '现金不足，无法买入 ETF';
       player.cash -= costCash;
       portfolio[action.etfId] += action.shares;
+      recordEtfBuy(s, player.id, action.etfId, costCash);
       ctx.events.push({ type: 'cash', from: player.id, to: null, amount: costCash });
       recordMarketEvent(s, {
         kind: 'etf-bought',
@@ -342,8 +352,10 @@ function dispatch(s: GameState, ctx: Ctx, player: PlayerState, action: Action): 
       if (portfolio[action.etfId] < action.shares) return 'ETF 持仓不足';
       const forced = isDebtor;
       const quote = quoteEtfSale(s, action.etfId, action.shares, forced);
+      const sharesHeldBefore = portfolio[action.etfId];
       portfolio[action.etfId] -= action.shares;
       player.cash += quote.netCash;
+      recordEtfSell(s, player.id, action.etfId, action.shares, sharesHeldBefore, quote.netCash);
       ctx.events.push({ type: 'cash', from: null, to: player.id, amount: quote.netCash });
       recordMarketEvent(s, {
         kind: forced ? 'etf-forced-sold' : 'etf-sold',
@@ -440,7 +452,7 @@ function doRoll(s: GameState, ctx: Ctx, player: PlayerState): void {
       player.jailTurns += 1;
       if (player.jailTurns >= 3) {
         log(s, `${player.name} 第三次没掷出双数, 必须交 $${JAIL_FINE} 出狱`);
-        charge(s, ctx, player, JAIL_FINE, null, `监狱保释金`, true, JAIL_POS);
+        charge(s, ctx, player, JAIL_FINE, null, `监狱保释金`, true, JAIL_POS, 'bail');
         player.inJail = false;
         player.jailTurns = 0;
         s.suppressDoubles = true;
@@ -485,6 +497,7 @@ function moveWalk(s: GameState, ctx: Ctx, player: PlayerState, steps: number): v
   ctx.events.push({ type: 'move', playerId: player.id, path });
   if (player.position < from) {
     player.cash += GO_SALARY;
+    playerStats(s, player.id).salaryReceived += GO_SALARY;
     ctx.events.push({ type: 'cash', from: null, to: player.id, amount: GO_SALARY, tileId: 0 });
     log(s, `${player.name} 经过起点, 领取 $${GO_SALARY}`);
   }
@@ -502,6 +515,7 @@ function sendToJail(s: GameState, ctx: Ctx, player: PlayerState): void {
   player.position = JAIL_POS;
   player.inJail = true;
   player.jailTurns = 0;
+  playerStats(s, player.id).jailVisits += 1;
   ctx.events.push({ type: 'move', playerId: player.id, path: [JAIL_POS], teleport: true });
   log(s, `${player.name} 被关进了监狱`);
 }
@@ -531,7 +545,7 @@ function resolveLanding(
           tileId: tile.id,
           amount: rent,
         });
-        charge(s, ctx, player, rent, owner.id, `${tile.name} 的租金`, false, tile.id);
+        charge(s, ctx, player, rent, owner.id, `${tile.name} 的租金`, false, tile.id, 'rent');
       } else if (own.mortgaged) {
         log(s, `${tile.name} 已被抵押, 不用付租金`);
       }
@@ -550,7 +564,7 @@ function resolveLanding(
         amount: tile.amount,
         industries: ['finance'],
       });
-      charge(s, ctx, player, tile.amount, null, tile.name, true, tile.id);
+      charge(s, ctx, player, tile.amount, null, tile.name, true, tile.id, 'tax');
       return;
     case 'chance':
     case 'chest':
@@ -624,18 +638,19 @@ function applyCardEffect(
     case 'money': {
       if (e.amount >= 0) {
         player.cash += e.amount;
+        recordCardGain(s, player.id, e.amount, card.text);
         ctx.events.push({ type: 'cash', from: null, to: player.id, amount: e.amount });
       } else {
-        charge(s, ctx, player, -e.amount, null, '卡牌费用', true);
+        charge(s, ctx, player, -e.amount, null, '卡牌费用', true, undefined, 'card');
       }
       return;
     }
     case 'money-each': {
       const others = alivePlayers(s).filter((p) => p.id !== player.id);
       if (e.amount > 0) {
-        for (const other of others) charge(s, ctx, other, e.amount, player.id, `给 ${player.name} 的礼金`);
+        for (const other of others) charge(s, ctx, other, e.amount, player.id, `给 ${player.name} 的礼金`, false, undefined, 'gift');
       } else {
-        for (const other of others) charge(s, ctx, player, -e.amount, other.id, `付给 ${other.name}`);
+        for (const other of others) charge(s, ctx, player, -e.amount, other.id, `付给 ${other.name}`, false, undefined, 'gift');
       }
       return;
     }
@@ -646,7 +661,7 @@ function applyCardEffect(
         if (houses === 5) total += e.perHotel;
         else total += houses * e.perHouse;
       }
-      if (total > 0) charge(s, ctx, player, total, null, '房屋维修费', true);
+      if (total > 0) charge(s, ctx, player, total, null, '房屋维修费', true, undefined, 'repairs');
       else log(s, `${player.name} 没有建筑, 逃过一劫`);
       return;
     }
@@ -675,10 +690,10 @@ function nearestTile(from: number, type: 'railroad' | 'utility'): number {
 
 // ---------------------------------------------------------------- 收付款与债务
 
-/** 立即支付 (调用方保证付得起) */
+/** 立即支付 (调用方保证付得起); 所有记账路径的资金在这里统一归类进统计 */
 function pay(
   s: GameState, ctx: Ctx, payer: PlayerState, amount: number,
-  creditorId: string | null, toPot: boolean, tileId?: number,
+  creditorId: string | null, toPot: boolean, tileId?: number, kind: PaymentKind = 'other',
 ): void {
   payer.cash -= amount;
   let received: string | null = null;
@@ -691,6 +706,7 @@ function pay(
   } else if (toPot && s.settings.freeParkingPot) {
     s.pot += amount;
   }
+  recordPayment(s, kind, payer.id, received, amount, tileId);
   ctx.events.push({ type: 'cash', from: payer.id, to: received, amount, tileId });
 }
 
@@ -698,14 +714,15 @@ function pay(
 function charge(
   s: GameState, ctx: Ctx, payer: PlayerState, amount: number,
   creditorId: string | null, reason: string, toPot = false, tileId?: number,
+  kind: PaymentKind = 'other',
 ): void {
   if (amount <= 0) return;
   if (payer.cash >= amount) {
-    pay(s, ctx, payer, amount, creditorId, toPot, tileId);
+    pay(s, ctx, payer, amount, creditorId, toPot, tileId, kind);
     const to = creditorId ? getPlayer(s, creditorId).name : '银行';
     log(s, `${payer.name} 付给${to} $${amount} (${reason})`);
   } else {
-    s.debts.push({ debtor: payer.id, creditor: creditorId, amount, reason });
+    s.debts.push({ debtor: payer.id, creditor: creditorId, amount, reason, kind, tileId });
     log(s, `${payer.name} 现金不足以支付 $${amount} (${reason}), 需要变卖资产筹钱!`);
   }
 }
@@ -719,7 +736,7 @@ function settleDebts(s: GameState, ctx: Ctx): void {
       continue;
     }
     if (debtor.cash < debt.amount) break;
-    pay(s, ctx, debtor, debt.amount, debt.creditor, true);
+    pay(s, ctx, debtor, debt.amount, debt.creditor, true, debt.tileId, debt.kind);
     const to = debt.creditor ? getPlayer(s, debt.creditor).name : '银行';
     log(s, `${debtor.name} 付清了欠${to}的 $${debt.amount} (${debt.reason})`);
     s.debts.shift();
@@ -782,7 +799,9 @@ function executeBankruptcy(s: GameState, ctx: Ctx, debtorId: string): void {
       creditorPortfolio[etfId] += shares;
     }
   }
+  transferEtfBasisOnBankruptcy(s, debtorId, creditor && !creditor.bankrupt ? creditor.id : null);
   s.portfolios[debtorId] = createEmptyPortfolio();
+  playerStats(s, debtorId).bankruptAtTurn = s.turnCount;
 
   // 地产
   const toAuction: number[] = [];
@@ -824,6 +843,7 @@ function checkWin(s: GameState, ctx: Ctx): boolean {
   const alive = alivePlayers(s);
   if (alive.length === 1) {
     const winner = alive[0]!;
+    snapshotNetWorth(s);
     s.winner = winner.id;
     s.phase = 'game-over';
     ctx.events.push({ type: 'game-over', winner: winner.id });
@@ -845,6 +865,7 @@ function manualSettlementError(s: GameState): string | null {
 function finishByNetWorth(s: GameState, ctx: Ctx, reason: string): void {
   const ranked = alivePlayers(s).sort((a, b) => netWorth(s, b.id) - netWorth(s, a.id));
   const winner = ranked[0]!;
+  snapshotNetWorth(s);
   s.trade = null;
   s.winner = winner.id;
   s.phase = 'game-over';
@@ -911,8 +932,16 @@ function finishAuction(s: GameState, ctx: Ctx, sold: boolean): void {
     const winner = getPlayer(s, a.highBidder);
     winner.cash -= a.highBid;
     s.ownership[a.tileId]!.owner = winner.id;
+    const stats = playerStats(s, winner.id);
+    stats.auctionWins += 1;
+    stats.propertiesBought += 1;
     ctx.events.push({ type: 'cash', from: winner.id, to: null, amount: a.highBid, tileId: a.tileId });
     if (isOwnable(tile)) {
+      const ratio = a.highBid / tile.price;
+      const best = s.stats.bestAuction;
+      if (!best || ratio < best.bid / best.listPrice) {
+        s.stats.bestAuction = { winnerId: winner.id, tileId: tile.id, bid: a.highBid, listPrice: tile.price };
+      }
       recordMarketEvent(s, {
         kind: 'property-bought',
         polarity: 'bullish',
@@ -1067,7 +1096,10 @@ function advanceTurn(s: GameState, ctx: Ctx): void {
       break;
     }
   }
-  if (nextIdx <= idx) s.market = settleMarketRound(s.market);
+  if (nextIdx <= idx) {
+    s.market = settleMarketRound(s.market);
+    snapshotNetWorth(s);
+  }
   s.dice = null;
   s.doublesCount = 0;
   s.suppressDoubles = false;

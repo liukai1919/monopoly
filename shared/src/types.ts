@@ -111,6 +111,8 @@ export interface Debt {
   creditor: string | null;      // null = 银行
   amount: number;
   reason: string;
+  kind: PaymentKind;            // 结清时用于归类统计
+  tileId?: number;
 }
 
 export interface TradeSide { cash: number; properties: number[]; jailCards: number; }
@@ -188,6 +190,46 @@ export interface GameSettings {
 
 export interface LogEntry { text: string; ts: number; }
 
+// ---------- 终局统计 ----------
+export type PaymentKind = 'rent' | 'tax' | 'card' | 'gift' | 'repairs' | 'bail' | 'other';
+
+export interface PlayerEtfStats {
+  /** 当前持仓的成本 (分), 平均成本法, 含买入手续费 */
+  costCents: Record<EtfId, number>;
+  /** 已实现盈亏 (分): 卖出净得 - 卖出部分成本; 破产没收计为全额亏损 */
+  realizedCents: number;
+  /** 累计投入 (分) */
+  investedCents: number;
+}
+
+export interface PlayerStats {
+  rentReceived: number;
+  rentPaid: number;
+  taxesPaid: number;            // 税款 + 维修费 + 保释金
+  salaryReceived: number;       // 经过起点领的薪水
+  cardGains: number;            // 卡牌正向收入 + 礼金收入
+  cardLosses: number;           // 卡牌罚款 + 礼金支出
+  jailVisits: number;
+  propertiesBought: number;     // 直购 + 拍得
+  auctionWins: number;
+  buildSpend: number;
+  bankruptAtTurn: number | null;
+  etf: PlayerEtfStats;
+}
+
+export interface RentRecord { payerId: string; ownerId: string; tileId: number; amount: number; }
+export interface AuctionRecord { winnerId: string; tileId: number; bid: number; listPrice: number; }
+export interface WindfallRecord { playerId: string; amount: number; text: string; }
+
+export interface GameStats {
+  players: Record<string, PlayerStats>;
+  /** 每整轮结束时各玩家净资产快照, 列序与 s.players 对齐; [0] 为开局 */
+  netWorthHistory: number[][];
+  biggestRent: RentRecord | null;
+  bestAuction: AuctionRecord | null;      // 最低 bid/listPrice
+  biggestWindfall: WindfallRecord | null;
+}
+
 export interface GameState {
   phase: TurnPhase;
   players: PlayerState[];
@@ -212,6 +254,7 @@ export interface GameState {
   winner: string | null;
   settings: GameSettings;
   log: LogEntry[];
+  stats: GameStats;
 }
 
 // ---------- 玩家动作 ----------

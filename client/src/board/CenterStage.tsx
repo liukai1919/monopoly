@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ETF_DEFINITIONS, getPlayerToken, getTile } from '@monopoly/shared';
+import { ETF_DEFINITIONS, getTile } from '@monopoly/shared';
 import type { DiceStyle, EtfId, GameState } from '@monopoly/shared';
-import { socket } from '../api';
 
 const DICE_PIPS: Record<number, number[]> = {
   1: [5],
@@ -83,7 +82,6 @@ export default function CenterStage({ game, code, shownDice, diceRolling, rollin
         </div>
       )}
 
-      {game.phase === 'game-over' && <WinnerOverlay game={game} code={code} />}
     </div>
   );
 }
@@ -264,39 +262,3 @@ function AuctionPanel({ game }: { game: GameState }) {
   );
 }
 
-function WinnerOverlay({ game, code }: { game: GameState; code: string }) {
-  const winner = game.players.find((p) => p.id === game.winner);
-  const token = getPlayerToken(winner?.tokenId);
-  return (
-    <div className="winner-overlay">
-      <Confetti />
-      <div className="winner-emoji">{winner?.emoji}</div>
-      <h2>🏆 {winner?.name} 获胜!</h2>
-      {token && <div className="winner-token">{token.name} · {token.subtitle}</div>}
-      <button className="btn btn-primary btn-xl" onClick={() => socket.emit('lobby:reset', { code })}>
-        🔁 再来一局
-      </button>
-    </div>
-  );
-}
-
-function Confetti() {
-  return (
-    <div className="confetti" aria-hidden="true">
-      {Array.from({ length: 46 }, (_, i) => (
-        <i
-          key={i}
-          className={i % 7 === 0 ? 'confetti-leaf' : ''}
-          style={{
-            '--x': `${(i * 29) % 100}%`,
-            '--delay': `${-(i * 0.13).toFixed(2)}s`,
-            '--dur': `${2.8 + (i % 5) * 0.28}s`,
-            '--hue': `${(i * 47) % 360}`,
-          } as CSSProperties}
-        >
-          {i % 7 === 0 ? '🍁' : ''}
-        </i>
-      ))}
-    </div>
-  );
-}
