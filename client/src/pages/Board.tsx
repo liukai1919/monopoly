@@ -9,6 +9,7 @@ import type { RoomSnapshot } from '../api';
 import BoardGrid from '../board/BoardGrid';
 import type { MoneyFxItem } from '../board/BoardGrid';
 import CenterStage from '../board/CenterStage';
+import SettlementScreen from '../board/SettlementScreen';
 import Sidebar from '../board/Sidebar';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -355,6 +356,7 @@ export default function Board() {
         displayCash={displayCash}
         cashFloats={cashFloats}
       />
+      {room.game.phase === 'game-over' && <SettlementScreen game={room.game} code={code} />}
     </div>
   );
 }

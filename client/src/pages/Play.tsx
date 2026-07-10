@@ -7,6 +7,7 @@ import ActionPanel from '../play/ActionPanel';
 import AssetsPanel from '../play/AssetsPanel';
 import GuidePanel from '../play/GuidePanel';
 import MarketPanel from '../play/MarketPanel';
+import ReportPanel from '../play/ReportPanel';
 import TradePanel from '../play/TradePanel';
 
 export default function Play() {
@@ -170,7 +171,9 @@ export default function Play() {
       </div>
 
       <main className="play-main">
-        {tab === 'action' && <ActionPanel game={game} meId={pid} act={act} />}
+        {tab === 'action' && (game.phase === 'game-over'
+          ? <ReportPanel game={game} meId={pid} />
+          : <ActionPanel game={game} meId={pid} act={act} />)}
         {tab === 'assets' && <AssetsPanel game={game} meId={pid} act={act} />}
         {tab === 'market' && <MarketPanel game={game} meId={pid} act={act} />}
         {tab === 'trade' && <TradePanel game={game} meId={pid} act={act} />}
@@ -220,7 +223,7 @@ function usePhoneHaptics(
     }
 
     const actionKey = [
-      game.turn,
+      game.turnCount,
       game.phase,
       game.currentPlayer,
       game.auction?.turn ?? '',
@@ -249,9 +252,7 @@ function usePhoneHaptics(
 }
 
 function vibrate(pattern: number | number[]) {
-  if (typeof navigator === 'undefined') return;
-  const maybeVibrate = (navigator as Navigator & { vibrate?: (value: number | number[]) => boolean }).vibrate;
-  if (maybeVibrate) maybeVibrate.call(navigator, pattern);
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern);
 }
 
 function TokenPicker({ selectedId, onSelect }: {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-  BOARD, CHANCE_CARDS, CHEST_CARDS, ETF_DEFINITIONS, applyAction, canBuild, computeRent, createGame,
-  groupTiles, isOwnable, settleGame,
+  BOARD, CHANCE_CARDS, CHEST_CARDS, ETF_DEFINITIONS, applyAction, buildSettlementReport, canBuild,
+  computeRent, createGame, etfUnrealizedCents, groupTiles, isOwnable, netWorth, settleGame,
 } from '../index';
 import { recordMarketEvent } from '../market';
 import type { Action, GameState, RNG, SeatInfo } from '../index';
@@ -307,7 +307,7 @@ describe('债务与破产', () => {
     let s = newGame(3);
     player(s, 'a').cash = 10;
     s.ownership[39]!.owner = 'a';
-    s.debts.push({ debtor: 'a', creditor: null, amount: 500, reason: '测试' });
+    s.debts.push({ debtor: 'a', creditor: null, amount: 500, reason: '测试', kind: 'other' });
     s.phase = 'awaiting-debt';
     s = mustApply(s, 'a', { type: 'declare-bankruptcy' });
     expect(player(s, 'a').bankrupt).toBe(true);
@@ -621,7 +621,7 @@ describe('动画事件流 (cash / monopoly / bankrupt)', () => {
   test('破产广播 bankrupt 事件, 现金移交也事件化', () => {
     const s = newGame();
     player(s, 'a').cash = 50;
-    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: '测试' });
+    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: '测试', kind: 'other' });
     s.phase = 'awaiting-debt';
     const r = applyAction(s, 'a', { type: 'declare-bankruptcy' });
     if (!r.ok) throw new Error(r.error);
@@ -654,5 +654,242 @@ describe('数据完整性', () => {
     expect(groupTiles('brown')).toHaveLength(2);
     expect(groupTiles('darkblue')).toHaveLength(2);
     expect(groupTiles('red')).toHaveLength(3);
+  });
+});
+
+describe('终局统计', () => {
+  test('租金双边记账, biggestRent 只记最大一笔, 过起点记薪水', () => {
+    let s = newGame();
+    s.ownership[39]!.owner = 'b';
+    s.ownership[1]!.owner = 'b';
+    player(s, 'a').position = 36;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 39 多伦多, 租金 50
+    expect(s.stats.players.a!.rentPaid).toBe(50);
+    expect(s.stats.players.b!.rentReceived).toBe(50);
+    expect(s.stats.biggestRent).toEqual({ payerId: 'a', ownerId: 'b', tileId: 39, amount: 50 });
+
+    s.phase = 'awaiting-roll';
+    s.dice = null;
+    player(s, 'a').position = 38;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // 过起点 → 1 圣约翰斯, 租金 2
+    expect(s.stats.players.a!.rentPaid).toBe(52);
+    expect(s.stats.players.b!.rentReceived).toBe(52);
+    expect(s.stats.players.a!.salaryReceived).toBe(200);
+    expect(s.stats.biggestRent!.amount).toBe(50); // 更小的租金不顶替
+  });
+
+  test('租金走欠债路径结清后仍按 rent 归类', () => {
+    let s = newGame();
+    s.ownership[39]!.owner = 'b';
+    s.ownership[1]!.owner = 'a';
+    s.ownership[3]!.owner = 'a';
+    player(s, 'a').cash = 10;
+    player(s, 'a').position = 36;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // 租金 50 > 现金 10
+    expect(s.phase).toBe('awaiting-debt');
+    expect(s.debts[0]).toMatchObject({ kind: 'rent', tileId: 39 });
+    s = mustApply(s, 'a', { type: 'mortgage', tileId: 1 });  // +30, 仍不够
+    s = mustApply(s, 'a', { type: 'mortgage', tileId: 3 });  // +30, 结清
+    expect(s.debts).toHaveLength(0);
+    expect(s.stats.players.a!.rentPaid).toBe(50);
+    expect(s.stats.players.b!.rentReceived).toBe(50);
+    expect(s.stats.biggestRent).toEqual({ payerId: 'a', ownerId: 'b', tileId: 39, amount: 50 });
+  });
+
+  test('税款与保释金计入 taxesPaid', () => {
+    let s = newGame();
+    player(s, 'a').position = 1;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 4 所得税 $200
+    expect(s.stats.players.a!.taxesPaid).toBe(200);
+
+    s.phase = 'awaiting-roll';
+    s.dice = null;
+    player(s, 'a').inJail = true;
+    player(s, 'a').position = 10;
+    s = mustApply(s, 'a', { type: 'jail-pay' });
+    expect(s.stats.players.a!.taxesPaid).toBe(250);
+  });
+
+  test('卡牌收支与 biggestWindfall', () => {
+    let s = newGame();
+    s.phase = 'awaiting-card';
+    s.pendingCard = { playerId: 'a', deck: 'chance', diceSum: 5, tileId: 7 };
+    s.chanceDeck = [7]; // 银行派发股息, 收 $50
+    s = mustApply(s, 'a', { type: 'draw-card' });
+    expect(s.stats.players.a!.cardGains).toBe(50);
+    expect(s.stats.biggestWindfall).toMatchObject({ playerId: 'a', amount: 50 });
+
+    s.phase = 'awaiting-card';
+    s.pendingCard = { playerId: 'a', deck: 'chance', diceSum: 5, tileId: 7 };
+    s.chanceDeck = [12]; // 超速罚款 $15
+    s = mustApply(s, 'a', { type: 'draw-card' });
+    expect(s.stats.players.a!.cardLosses).toBe(15);
+  });
+
+  test('生日礼金双边按 gift 归类', () => {
+    let s = newGame(3);
+    s.phase = 'awaiting-card';
+    s.pendingCard = { playerId: 'a', deck: 'chest', diceSum: 5, tileId: 17 };
+    s.chestDeck = [108]; // 生日, 每位玩家给你 $10
+    s = mustApply(s, 'a', { type: 'draw-card' });
+    expect(s.stats.players.a!.cardGains).toBe(20);
+    expect(s.stats.players.b!.cardLosses).toBe(10);
+    expect(s.stats.players.c!.cardLosses).toBe(10);
+  });
+
+  test('三种入狱各计一次 jailVisits, 蹲狱不计', () => {
+    let s = newGame();
+    player(s, 'a').position = 27;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 30 入狱格
+    expect(s.stats.players.a!.jailVisits).toBe(1);
+
+    s.phase = 'awaiting-roll';
+    s.dice = null;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // 没掷双数, 继续蹲
+    expect(s.stats.players.a!.jailVisits).toBe(1);
+
+    // 三连双入狱
+    let s2 = newGame();
+    s2.ownership[14]!.owner = 'a';
+    player(s2, 'a').position = 8;
+    s2 = mustApply(s2, 'a', { type: 'roll' }, diceRng(1, 1)); // → 10 探监
+    s2 = mustApply(s2, 'a', { type: 'roll' }, diceRng(2, 2)); // → 14 自己的地
+    s2 = mustApply(s2, 'a', { type: 'roll' }, diceRng(3, 3)); // 三连双 → 入狱
+    expect(s2.stats.players.a!.jailVisits).toBe(1);
+
+    // 卡牌入狱
+    let s3 = newGame();
+    s3.phase = 'awaiting-card';
+    s3.pendingCard = { playerId: 'a', deck: 'chance', diceSum: 5, tileId: 7 };
+    s3.chanceDeck = [10];
+    s3 = mustApply(s3, 'a', { type: 'draw-card' });
+    expect(s3.stats.players.a!.jailVisits).toBe(1);
+  });
+
+  test('ETF 平均成本法: 部分卖出与全部卖出', () => {
+    let s = newGame();
+    s.market.etfs['CAN-REAL']!.priceCents = 10_000;
+    s = mustApply(s, 'a', { type: 'buy-etf', etfId: 'CAN-REAL', shares: 2 }); // 成本 20600 分
+    const st = () => s.stats.players.a!.etf;
+    expect(st().costCents['CAN-REAL']).toBe(20_600);
+    expect(st().investedCents).toBe(20_600);
+
+    s.market.etfs['CAN-REAL']!.priceCents = 15_000;
+    s = mustApply(s, 'a', { type: 'sell-etf', etfId: 'CAN-REAL', shares: 1 }); // 净得 $145
+    expect(st().costCents['CAN-REAL']).toBe(10_300);
+    expect(st().realizedCents).toBe(14_500 - 10_300);
+    expect(etfUnrealizedCents(s, 'a')).toBe(15_000 - 10_300);
+
+    s = mustApply(s, 'a', { type: 'sell-etf', etfId: 'CAN-REAL', shares: 1 }); // 全部卖出
+    expect(st().costCents['CAN-REAL']).toBe(0); // 基准精确清零
+    expect(st().realizedCents).toBe((14_500 - 10_300) * 2);
+    expect(etfUnrealizedCents(s, 'a')).toBe(0);
+  });
+
+  test('破产: ETF 基准随资产转给债权人, bankruptAtTurn 落值', () => {
+    let s = newGame();
+    s.market.etfs['CAN-REAL']!.priceCents = 10_000;
+    s = mustApply(s, 'a', { type: 'buy-etf', etfId: 'CAN-REAL', shares: 2 });
+    player(s, 'a').cash = 0;
+    s.debts.push({ debtor: 'a', creditor: 'b', amount: 10_000, reason: '测试', kind: 'other' });
+    s.phase = 'awaiting-debt';
+    s = mustApply(s, 'a', { type: 'declare-bankruptcy' });
+    expect(s.portfolios.b!['CAN-REAL']).toBe(2);
+    expect(s.stats.players.b!.etf.costCents['CAN-REAL']).toBe(20_600);
+    expect(s.stats.players.a!.etf.costCents['CAN-REAL']).toBe(0);
+    expect(s.stats.players.a!.bankruptAtTurn).toBe(s.turnCount);
+    // 两人局 → 直接终局, 终局快照: 破产者 0
+    expect(s.phase).toBe('game-over');
+    const last = s.stats.netWorthHistory.at(-1)!;
+    expect(last[0]).toBe(0);
+    expect(last[1]).toBe(netWorth(s, 'b'));
+  });
+
+  test('破产归银行: ETF 基准计为全额已实现亏损', () => {
+    let s = newGame(3);
+    s.market.etfs['CAN-REAL']!.priceCents = 10_000;
+    s = mustApply(s, 'a', { type: 'buy-etf', etfId: 'CAN-REAL', shares: 2 });
+    player(s, 'a').cash = 0;
+    s.debts.push({ debtor: 'a', creditor: null, amount: 10_000, reason: '测试', kind: 'other' });
+    s.phase = 'awaiting-debt';
+    s = mustApply(s, 'a', { type: 'declare-bankruptcy' });
+    expect(s.stats.players.a!.etf.realizedCents).toBe(-20_600);
+    expect(s.stats.players.a!.etf.costCents['CAN-REAL']).toBe(0);
+  });
+
+  test('拍卖: auctionWins / propertiesBought / bestAuction', () => {
+    let s = newGame(3);
+    player(s, 'a').position = 38;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2)); // → 1 无主
+    s = mustApply(s, 'a', { type: 'decline-buy' });
+    expect(s.phase).toBe('auction');
+    s = mustApply(s, 'b', { type: 'bid', amount: 30 });
+    s = mustApply(s, 'c', { type: 'pass-bid' });
+    s = mustApply(s, 'a', { type: 'pass-bid' });
+    expect(s.ownership[1]!.owner).toBe('b');
+    expect(s.stats.players.b!.auctionWins).toBe(1);
+    expect(s.stats.players.b!.propertiesBought).toBe(1);
+    expect(s.stats.bestAuction).toEqual({ winnerId: 'b', tileId: 1, bid: 30, listPrice: 60 });
+  });
+
+  test('直购计入 propertiesBought', () => {
+    let s = newGame();
+    player(s, 'a').position = 38;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 2));
+    s = mustApply(s, 'a', { type: 'buy' });
+    expect(s.stats.players.a!.propertiesBought).toBe(1);
+  });
+
+  test('netWorthHistory: 开局一行, 每整轮一行, 手动结算补终局行', () => {
+    let s = newGame();
+    expect(s.stats.netWorthHistory).toEqual([[1500, 1500]]);
+
+    player(s, 'a').position = 16;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 3)); // → 20 免费停车
+    s = mustApply(s, 'a', { type: 'end-turn' });
+    expect(s.stats.netWorthHistory).toHaveLength(1); // 半轮不快照
+    player(s, 'b').position = 16;
+    s = mustApply(s, 'b', { type: 'roll' }, diceRng(1, 3));
+    s = mustApply(s, 'b', { type: 'end-turn' }); // 回到 a → 整轮
+    expect(s.stats.netWorthHistory).toHaveLength(2);
+    expect(s.stats.netWorthHistory[1]).toEqual([1500, 1500]);
+
+    const r = settleGame(s);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.state.stats.netWorthHistory).toHaveLength(3);
+    expect(r.state.stats.netWorthHistory.at(-1)).toEqual([
+      netWorth(r.state, 'a'), netWorth(r.state, 'b'),
+    ]);
+  });
+
+  test('回合上限终局也补快照', () => {
+    let s = newGame(2, { maxTurns: 1 });
+    player(s, 'a').position = 16;
+    s = mustApply(s, 'a', { type: 'roll' }, diceRng(1, 3));
+    s = mustApply(s, 'a', { type: 'end-turn' });
+    expect(s.phase).toBe('game-over');
+    expect(s.stats.netWorthHistory).toHaveLength(2);
+  });
+
+  test('buildSettlementReport: 排名/明细/称号省略', () => {
+    let s = newGame(3);
+    s.ownership[39]!.owner = 'a';
+    s.ownership[1]!.owner = 'a';
+    s.ownership[1]!.mortgaged = true;
+    player(s, 'b').bankrupt = true;
+    s.stats.players.b!.bankruptAtTurn = 5;
+    player(s, 'c').bankrupt = true;
+    s.stats.players.c!.bankruptAtTurn = 9;
+    s.winner = 'a';
+    s.phase = 'game-over';
+
+    const report = buildSettlementReport(s);
+    expect(report.ranking.map((r) => r.playerId)).toEqual(['a', 'c', 'b']); // 破产越晚名次越高
+    expect(report.ranking[0]!.breakdown.total).toBe(netWorth(s, 'a'));
+    expect(report.ranking[0]!.breakdown.propertyValue).toBe(400 + 30); // 多伦多全价 + 抵押半价
+    expect(report.ranking[1]!.bankrupt).toBe(true);
+    expect(report.ranking[1]!.breakdown.total).toBe(0);
+    // 没有租金/拍卖/入狱/卡牌/ETF 活动 → 相应称号省略
+    expect(report.superlatives).toHaveLength(0);
   });
 });
