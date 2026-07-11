@@ -794,6 +794,7 @@ b { font-weight: 700; }
   display: flex;
   flex-direction: column;
 }
+.stage > .deed-card { position: absolute; }
 .deed-band {
   display: flex;
   align-items: center;
