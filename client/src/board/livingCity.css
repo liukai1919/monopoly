@@ -141,6 +141,10 @@
   transform: rotate(-0.4deg);
 }
 
+/* The center creates its own stacking context. Lift that context while the
+   landing deed is visible so route tiles cannot cover the property details. */
+.living-city-center:has(.deed-card) { z-index: 19; }
+
 .living-city-center::before,
 .living-city-center::after {
   content: "";
